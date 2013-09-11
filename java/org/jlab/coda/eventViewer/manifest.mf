@@ -1,0 +1,5 @@
+Manifest-Version: 1.0
+Created-By: "CODA DAQ group"
+Specification-Title: JEventViewer
+Sealed: true
+Main-Class: org.jlab.coda.eventViewer.EventTreeFrame
