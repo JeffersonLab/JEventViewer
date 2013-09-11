@@ -2,15 +2,18 @@
 
 <project name="jeventviewer" default="compile" basedir=".">
 
-    <!-- environmental variables -->
+    <!-- enviromental variables -->
     <property environment="env"/>
     
     <!-- Version -->
     <property name="jev.version" value="1.0" />
-    
+
     <!-- Debug -->
     <property name="javac.debug" value="on" />
-    
+
+    <!-- Classpath , env CLASSPATH is first, internal is second -->
+    <property name="build.sysclasspath" value="first" />
+
     <!-- Directories/Files -->
     <property name="src.dir"       value="java" />
     <property name="build.dir"     value="build" />
@@ -32,9 +35,7 @@
         <echo message="       clean      - remove class files" />
         <echo message="       cleanall   - remove all generated files" />
         <echo message="       jar        - compile and create jar file" />
-        <echo message="       install    - create jar file and install into 'prefix'" />
-        <echo message="                    if given on command line by -Dprefix=dir'," />
-        <echo message="                    else install into INSTALL_DIR or CODA_HOME" />
+        <echo message="       install    - create jar file and install into CODA" />
         <echo message="                    if defined (in that order)" />
         <echo message="       all        - clean, compile and create jar file" />
         <echo message="       javadoc    - create javadoc documentation" />
@@ -52,6 +53,7 @@
         <echo message="    build.classes = ${build.classes}" />
         <echo message="    doc.dir       = ${doc.dir}" />
         <echo message="    javac.debug   = ${javac.debug}" />
+        <echo message="    classpath     = ${env.CLASSPATH}" />
     </target>
     
     <!-- Prepare things by creating directories -->
@@ -60,7 +62,7 @@
         <mkdir dir="${build.classes}" />
         <mkdir dir="${build.lib}" />
     </target>
-    
+
     <!-- Clean by removing class files -->
     <target name="clean" description="Remove all class files">
         <delete failonerror="no" >
@@ -78,7 +80,6 @@
     <target name="compile" depends="prepare" description="Compiles all source code.">
         <javac destdir="${build.classes}" debug="${javac.debug}" optimize="yes" >
             <src path="${src.dir}" />
-            <classpath refid="classpath" />
         </javac>
     </target>
     
@@ -90,7 +91,6 @@
                  access="public"
                  destdir="${doc.dir}"
                  use="true" >
-            <classpath refid="classpath" />
         </javadoc>
     </target>
     
@@ -102,7 +102,6 @@
                  access="package"
                  destdir="${doc.dir}"
                  use="true" >
-            <classpath refid="classpath" />
         </javadoc>
     </target>
     
@@ -118,55 +117,25 @@
     
     <!-- Install Jar file -->
     <target name="install" depends="jar" description="Installs jar file.">
-        <antcall target="-nested-if"/>
+        <antcall target="CODA_test"/>
     </target>
     
     <!-- Look for places to install the jar file (simulated if-then-else constructs) -->
-    <target name="-nested-if">
-        <condition property="prefixDefined">
-            <isset property="prefix"/>
+    <target name="CODA_test">
+        <condition property="CODA_Defined">
+            <isset property="env.CODA"/>
         </condition>
-        <antcall target="-then"/>
-        <antcall target="-else"/>
+        <antcall target="CODA_exists"/>
+        <antcall target="CODA_exists_not"/>
     </target>
     
-    <target name="-then" if="prefixDefined">
-        <echo>Install ${jarName} into ${prefix}</echo>
-        <copy file="${jarName}" todir="${prefix}/jar"/>
+    <target name="CODA_exists" if="CODA_Defined">
+        <echo message="Install ${jarName} into ${env.CODA}/jar" level="info" />
+        <copy file="${jarName}" todir="${env.CODA}/jar"/>
     </target>
     
-    <target name="-else" unless="prefixDefined">
-        <echo>Prefix is not defined, so look for INSTALL_DIR environmental variable</echo>
-        <condition property="installDirDefined">
-            <isset property="env.INSTALL_DIR"/>
-        </condition>
-        <antcall target="-inner.then"/>
-        <antcall target="-inner.else"/>
+    <target name="CODA_exists_not" unless="CODA_Defined">
+        <fail message="Define the CODA environmental variable to install, quitting" />
     </target>
-    
-    <target name="-inner.then" if="installDirDefined">
-        <echo>Install ${jarName} into ${env.INSTALL_DIR}/jar and ${env.INSTALL_DIR}/lib</echo>
-        <copy file="${jarName}" todir="${env.INSTALL_DIR}/jar"/>
-        <copy file="${jarName}" todir="${env.INSTALL_DIR}/lib"/>
-    </target>
-    
-    <target name="-inner.else" unless="installDirDefined">
-        <echo>INSTALL_DIR is not defined, so look for CODA_HOME environmental variable</echo>
-        <condition property="codaHomeDefined">
-            <isset property="env.CODA_HOME"/>
-        </condition>
-        <antcall target="-inner.inner.then"/>
-        <antcall target="-inner.inner.else"/>
-    </target>
-    
-    <target name="-inner.inner.then" if="codaHomeDefined">
-        <echo>Install ${jarName} into ${env.CODA_HOME}/jar and ${env.CODA_HOME}/lib</echo>
-        <copy file="${jarName}" todir="${env.CODA_HOME}/jar"/>
-        <copy file="${jarName}" todir="${env.CODA_HOME}/lib"/>
-    </target>
-    
-    <target name="-inner.inner.else" unless="codaHomeDefined">
-        <echo>No install directory given for jarfile</echo>
-    </target>
-    
+
 </project>
