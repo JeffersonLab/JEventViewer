@@ -5,7 +5,7 @@ import org.jlab.coda.jevio.EvioXMLDictionary;
 /**
  * This enum contains the choices for a source of dictionary.
  * @author timmer
- * @date Feb 21, 2013
+ * Feb 21, 2013
  */
 public enum DictionarySource {
     EVIOFILE ,   // embedded in evio file

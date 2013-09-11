@@ -23,7 +23,7 @@ import java.util.ArrayList;
  * in order to get ET events which are parsed into evio events.
  *
  * @author Timmer
- * @date 2/25/2013
+ * Feb 25, 2013
  */
 public class EtHandler {
 

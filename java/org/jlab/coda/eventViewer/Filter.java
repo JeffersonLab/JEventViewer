@@ -7,7 +7,7 @@ import org.jlab.coda.jevio.*;
  * allows the described evio events into the event viewer.
  *
  * @author timmer
- * @date Mar 19, 2013
+ * Mar 19, 2013
  */
 public enum Filter {
 

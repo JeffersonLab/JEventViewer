@@ -118,7 +118,7 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
 
     /**
      * Get the panel displaying header information.
-     * @return
+     * @return JPanel with evio header information.
      */
     public HeaderPanel getHeaderPanel() {
         return headerPanel;

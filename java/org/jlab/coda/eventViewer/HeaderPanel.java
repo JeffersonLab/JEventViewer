@@ -10,7 +10,6 @@ import java.awt.*;
 /**
  * This is a panel that displays the information from a BaseStructureHeader.
  * @author heddle
- *
  */
 @SuppressWarnings("serial")
 public class HeaderPanel extends JPanel {

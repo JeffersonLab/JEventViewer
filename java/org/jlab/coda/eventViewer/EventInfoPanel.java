@@ -22,8 +22,6 @@ public class EventInfoPanel extends JPanel {
     /**
      * Create a panel that goes in the north - top of the GUI. This will hold 2 labels.
      * One showing the current event source. The second showing the current dictionary source.
-     *
-     * @return the panel.
      */
     public EventInfoPanel() {
         Border lowerEtched = BorderFactory.createEtchedBorder(EtchedBorder.LOWERED);

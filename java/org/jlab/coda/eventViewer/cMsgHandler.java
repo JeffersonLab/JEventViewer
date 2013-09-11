@@ -21,7 +21,7 @@ import java.util.ArrayList;
  * method and, of course, must be set by the sender.
  *
  * @author timmer
- * @date Oct 19, 2009
+ * Oct 19, 2009
  */
 public class cMsgHandler {
 
