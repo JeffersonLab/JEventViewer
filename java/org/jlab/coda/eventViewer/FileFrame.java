@@ -7,12 +7,14 @@ import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import java.awt.*;
 import java.awt.event.*;
+import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
+import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 
 /**
@@ -33,8 +35,18 @@ public class FileFrame extends JFrame  {
     /** Menu item for switching data endianness. */
     private JMenuItem switchMenuItem;
 
-    /** Buffer to store file data in. */
-    private ByteBuffer dataBuffer;
+    /** Buffer of memory mapped file. */
+    private MappedByteBuffer mappedByteBuffer;
+    private IntBuffer mappedIntBuffer;
+
+    /** A button for selecting the next set of rows/file-data. */
+    JButton nextButton;
+    /** A button for selecting previous set of rows/file-data. */
+    JButton prevButton;
+    /** A button for jumping to the next block header occurrence. */
+    JButton nextBlockButton;
+    /** A button for jumping to the previous block header occurrence. */
+    JButton prevBlockButton;
 
 
     /**
@@ -57,6 +69,9 @@ public class FileFrame extends JFrame  {
 
         // add menus
         addMenus();
+
+        // add buttons
+        addButtons();
 
         // add JPanel to view file
         addFileViewPanel(file);
@@ -110,23 +125,52 @@ public class FileFrame extends JFrame  {
             order  = ByteOrder.BIG_ENDIAN;
             switchMenuItem.setText("To little endian");
         }
-        dataBuffer.order(order);
 
-        // Convert bytes into hex strings
-        IntBuffer intBuf = dataBuffer.asIntBuffer();
-        String[] data = new String[dataBuffer.capacity()/4];
-        for (int i=0; i < dataBuffer.capacity()/4; i++) {
-            data[i] = String.format("%#010x", intBuf.get(i));
-        }
+        mappedByteBuffer.order(order);
+        mappedIntBuffer = mappedByteBuffer.asIntBuffer();
 
         // Write into table
-        setTableData(data);
+        setTableData();
+    }
+
+
+    /** Add a panel of viewed data to this frame. */
+    private void addButtons() {
+        // Put table into panel and panel into frame
+        JPanel panel = new JPanel();
+        panel.setLayout(new GridLayout(2, 2, 2, 2));
+        nextButton = new JButton("Next >");
+        panel.add(nextButton);
+        prevButton = new JButton("< Prev");
+        panel.add(prevButton);
+        nextBlockButton = new JButton("Next Block");
+        panel.add(nextBlockButton);
+        prevBlockButton = new JButton("Prev Block");
+        panel.add(prevBlockButton);
+
+        this.add(panel, BorderLayout.NORTH);
     }
 
 
     /** Add a panel of viewed data to this frame. */
     private void addFileViewPanel(File file) {
         if (file == null) return;
+
+        try {
+            // Map the file to get access to its data
+            // with having to read the whole thing.
+            FileInputStream fileInputStream = new FileInputStream(file);
+            String path = file.getAbsolutePath();
+            FileChannel fileChannel = fileInputStream.getChannel();
+            long fileSize = fileChannel.size();
+
+            mappedByteBuffer = fileChannel.map(FileChannel.MapMode.READ_ONLY, 0L, fileSize);
+            mappedIntBuffer = mappedByteBuffer.asIntBuffer();
+            // This object is no longer needed since we have the map, so close it
+            fileChannel.close();
+        }
+        catch (IOException e) {/* should not happen */}
+
 
         // Set up the table widget for displaying data
         dataTable = new JTable(new MyTableModel());
@@ -140,37 +184,15 @@ public class FileFrame extends JFrame  {
         dataTable.setFont(newFont);
         tablePane = new JScrollPane(dataTable);
 
-        // Add data to table
-        try {
-            // Get file channel
-            FileInputStream fileInputStream = new FileInputStream(file);
-            FileChannel fileChannel = fileInputStream.getChannel();
-
-            // Read file into byte buffer
-            int bytes = (int) (fileChannel.size());
-            bytes = 4 * (bytes/4);
-            dataBuffer = ByteBuffer.allocateDirect(bytes);
-            fileChannel.read(dataBuffer);
-            dataBuffer.flip();
-
-            // Convert bytes into hex strings
-            IntBuffer intBuf = dataBuffer.asIntBuffer();
-            String[] data = new String[bytes/4];
-            for (int i=0; i < bytes/4; i++) {
-                data[i] = String.format("%#010x", intBuf.get(i));
-            }
-
-            // Write into table
-            setTableData(data);
-        }
-        catch (IOException e) {/* should not happen */}
+        // Write into table
+        setTableData();
 
         // Put table into panel and panel into frame
         JPanel panel = new JPanel();
         panel.setLayout(new BorderLayout());
         panel.add(tablePane, BorderLayout.CENTER);
 
-        this.add(panel);
+        this.add(panel, BorderLayout.CENTER);
     }
 
 
@@ -180,11 +202,11 @@ public class FileFrame extends JFrame  {
 
 
     /** This class describes the data table's data including column names. */
-    static private class MyTableModel extends AbstractTableModel {
+    private class MyTableModel extends AbstractTableModel {
         /** Column names won't change. */
         String[] names = {"Row", "Data", "Comments"};
         String[] columnNames = {names[0], names[1], names[2]};
-        Object[][] data;
+
         // Store original data string array for convenience
         String[] stringData;
 
@@ -193,8 +215,7 @@ public class FileFrame extends JFrame  {
         }
 
         public int getRowCount() {
-            if (data == null) return 0;
-            return data.length;
+            return mappedByteBuffer.limit()/4;
         }
 
         public String getColumnName(int col) {
@@ -202,12 +223,23 @@ public class FileFrame extends JFrame  {
         }
 
         public Object getValueAt(int row, int col) {
-            if (data == null) return null;
-            return data[row][col];
+            if (mappedByteBuffer == null) return null;
+
+            // 1st column is row or integer #
+            if (col == 0) {
+                return row+1;
+            }
+
+            // Don't keep track of 3rd column
+            if (col != 1) return null;
+
+            // Read data from mapped memory buffer
+            return String.format("0x %08x", mappedIntBuffer.get(row));
         }
 
         public Class getColumnClass(int c) {
-            //return getValueAt(0, c).getClass();
+            if (c == 0) return Integer.class;
+            if (c == 1) return String.class;
             return String.class;
         }
 
@@ -217,40 +249,16 @@ public class FileFrame extends JFrame  {
         }
 
         public void setValueAt(Object value, int row, int col) {
-            data[row][col] = value;
+            mappedByteBuffer.putInt(row, (Integer)value);
             fireTableCellUpdated(row, col);
         }
     }
 
     /** Set table's data. */
-    void setTableData(String[] data) {
+    void setTableData() {
         MyTableModel model = (MyTableModel)dataTable.getModel();
-
-        if (data == null || data.length < 1) {
-            model.data = null;
-            model.fireTableDataChanged();
-            return;
-        }
-
-        int rowCount = data.length;
-
-        // If first time thru, initialize unchanging stuff
-        if (model.stringData == null) {
-            model.data = new Object[rowCount][3];
-
-            for (int row=0; row < rowCount; row++) {
-                model.data[row][0] = row+1;
-                model.data[row][2] = null;
-            }
-        }
-
-        model.stringData = data;
-
-        for (int row=0; row < rowCount; row++) {
-            model.data[row][1] = data[row];
-        }
-
         model.fireTableDataChanged();
+System.out.println("Done adding data to table model");
     }
 
     /** Render used to change background color every Nth row. */
