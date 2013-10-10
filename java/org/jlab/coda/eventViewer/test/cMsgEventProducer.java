@@ -1,4 +1,4 @@
-package org.jlab.coda.jevio.test;
+package org.jlab.coda.eventViewer.test;
 
 import org.jlab.coda.cMsg.*;
 import org.jlab.coda.jevio.*;
@@ -6,7 +6,6 @@ import org.jlab.coda.jevio.*;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.io.IOException;
-//import java.nio.IntBuffer;
 
 /**
  * Class for testing EventTreeFrame graphics application with events
