@@ -1,6 +1,7 @@
-package org.jlab.coda.jevio.test;
+package org.jlab.coda.eventViewer.test;
 
 
+import org.jlab.coda.cMsg.*;
 import org.jlab.coda.jevio.*;
 
 import java.io.IOException;
