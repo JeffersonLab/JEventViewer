@@ -1157,6 +1157,9 @@ public class EventTreeMenu {
                         else {
                             isListSizeOne = false;
                         }
+                        break;
+
+                    default:
                 }
             }
         });

@@ -667,6 +667,8 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
                 }
                 break;
 
+            default:
+
             }
 
 		}
