@@ -1844,7 +1844,8 @@ public class EventTreeMenu {
                     try {
                         evioFileReader.toXMLFile(xmlFilePath, null);
                     }
-                    catch (IOException e) {e.printStackTrace();}
+                    catch (EvioException e) {e.printStackTrace();}
+                    catch (IOException   e) {e.printStackTrace();}
                     JOptionPane.showMessageDialog(eventTreePanel, "XML Writing has completed.", "Done",
                             JOptionPane.INFORMATION_MESSAGE);
                 }
