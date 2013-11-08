@@ -130,8 +130,8 @@
     </target>
     
     <target name="CODA_exists" if="CODA_Defined">
-        <echo message="Install ${jarName} into ${env.CODA}/jar" level="info" />
-        <copy file="${jarName}" todir="${env.CODA}/jar"/>
+        <echo message="Install ${jarName} into ${env.CODA}/common/jar" level="info" />
+        <copy file="${jarName}" todir="${env.CODA}/common/jar"/>
     </target>
     
     <target name="CODA_exists_not" unless="CODA_Defined">
