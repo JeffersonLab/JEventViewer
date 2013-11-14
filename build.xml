@@ -2,7 +2,7 @@
 
 <project name="jeventviewer" default="compile" basedir=".">
 
-    <!-- enviromental variables -->
+    <!-- environmental variables -->
     <property environment="env"/>
     
     <!-- Version -->
@@ -11,16 +11,15 @@
     <!-- Debug -->
     <property name="javac.debug" value="on" />
 
-    <!-- Classpath , env CLASSPATH is first, internal is second -->
-    <property name="build.sysclasspath" value="first" />
-
     <!-- Directories/Files -->
     <property name="src.dir"       value="java" />
     <property name="build.dir"     value="build" />
     <property name="build.classes" value="${build.dir}/classes" />
     <property name="build.lib"     value="${build.dir}/lib" />
+    <property name="local.jars"    value="java/jar" />
     <property name="doc.dir"       value="doc/javadoc" />
     <property name="jarName"       value="${build.lib}/JEventViewer-${jev.version}.jar" />
+
 
     <!-- Targets -->
     
@@ -40,6 +39,7 @@
         <echo message="       all        - clean, compile and create jar file" />
         <echo message="       javadoc    - create javadoc documentation" />
         <echo message="       developdoc - create javadoc documentation for developer" />
+        <echo message="       undoc      - remove all javadoc documentation" />
         <echo message="       prepare    - create necessary directories" />
     </target>
     
@@ -55,7 +55,38 @@
         <echo message="    javac.debug   = ${javac.debug}" />
         <echo message="    classpath     = ${env.CLASSPATH}" />
     </target>
-    
+
+
+    <!-- ************************************************************* -->
+    <!-- Set the classpath by checking the CODA environmental variable -->
+    <target name="CODA_test">
+        <condition property="CODA_Defined">
+            <isset property="env.CODA"/>
+        </condition>
+    </target>
+
+    <!-- if $CODA is set, use that for classpath -->
+    <target name="CODA_cp" depends="CODA_test" if="CODA_Defined">
+        <path id="classpath">
+            <fileset dir="${env.CODA}/common/jar" >
+                <include name="*.jar" />
+            </fileset>
+        </path>
+        <echo message="Compile with jars in $CODA/common/jar" />
+    </target>
+
+    <!-- if $CODA is NOT set, use jars provided with this distribution -->
+    <target name="CODA_nocp" depends="CODA_test" unless="CODA_Defined">
+        <path id="classpath">
+            <fileset dir="${local.jars}" >
+                <include name="*.jar" />
+            </fileset>
+        </path>
+        <echo message="Compile with jars in ${local.jars}" />
+    </target>
+    <!-- ************************************************************* -->
+
+
     <!-- Prepare things by creating directories -->
     <target name="prepare">
         <mkdir dir="${build.dir}" />
@@ -77,12 +108,16 @@
     </target>
     
     <!-- Compile all source -->
-    <target name="compile" depends="prepare" description="Compiles all source code.">
+    <target name="compile" depends="prepare,CODA_cp,CODA_nocp" description="Compiles all source code.">
         <javac destdir="${build.classes}" debug="${javac.debug}" optimize="yes" >
+            <classpath refid="classpath" />
             <src path="${src.dir}" />
         </javac>
     </target>
-    
+
+
+
+    <!-- ************************************************************* -->
     <!-- Javadoc -->
     <target name="javadoc" description="Create javadoc.">
         <mkdir dir="${doc.dir}" />
@@ -104,37 +139,39 @@
                  use="true" >
         </javadoc>
     </target>
-    
+
+    <!-- Removing Javadoc -->
+    <target name="undoc" description="remove all javadoc.">
+        <delete dir="${doc.dir}" />
+    </target>
+    <!-- ************************************************************* -->
+
+
+
     <!-- Create Jar file -->
     <target name="jar" depends="compile" description="Generates jar file.">
         <jar jarfile="${jarName}" manifest="${src.dir}/org/jlab/coda/eventViewer/manifest.mf">
             <fileset dir="${build.classes}" excludes="*.class" />
         </jar>
     </target>
-    
+
+
     <!-- Clean, compile, and create jar -->
     <target name="all" depends="clean,jar" description="Cleans, compile, then builds jar file." />
-    
+
+
     <!-- Install Jar file -->
-    <target name="install" depends="jar" description="Installs jar file.">
-        <antcall target="CODA_test"/>
+    <target name="install" depends="jar,CODA_cp,CODA_nocp" description="Installs jar file.">
+        <antcall target="CODA_def_install"/>
+        <antcall target="CODA_no_install"/>
     </target>
-    
-    <!-- Look for places to install the jar file (simulated if-then-else constructs) -->
-    <target name="CODA_test">
-        <condition property="CODA_Defined">
-            <isset property="env.CODA"/>
-        </condition>
-        <antcall target="CODA_exists"/>
-        <antcall target="CODA_exists_not"/>
-    </target>
-    
-    <target name="CODA_exists" if="CODA_Defined">
+        
+    <target name="CODA_def_install" if="CODA_Defined">
         <echo message="Install ${jarName} into ${env.CODA}/common/jar" level="info" />
         <copy file="${jarName}" todir="${env.CODA}/common/jar"/>
     </target>
     
-    <target name="CODA_exists_not" unless="CODA_Defined">
+    <target name="CODA_no_install" unless="CODA_Defined">
         <fail message="Define the CODA environmental variable to install, quitting" />
     </target>
 
