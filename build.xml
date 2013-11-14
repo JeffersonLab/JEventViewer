@@ -161,7 +161,7 @@
 
 
     <!-- Install Jar file -->
-    <target name="install" depends="jar,CODA_cp,CODA_nocp" description="Installs jar file.">
+    <target name="install" depends="jar,CODA_test" description="Installs jar file.">
         <antcall target="CODA_def_install"/>
         <antcall target="CODA_no_install"/>
     </target>
