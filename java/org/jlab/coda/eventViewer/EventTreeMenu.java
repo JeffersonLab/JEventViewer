@@ -67,7 +67,8 @@ public class EventTreeMenu {
      */
     private EventSource eventSource = EventSource.FILE;
 
-    /** Number of event currently being displayed. */
+    /** Number of event currently being displayed.
+     * Event numbers start at 1 but this is 0 initially. */
     private int eventIndex;
 
     // Create new background colors
@@ -781,12 +782,13 @@ public class EventTreeMenu {
                         if (evioFileReader != null) {
                             try {
                                 if (eventIndex >= evioFileReader.getEventCount()) break;
-
+//System.out.println("next button: looking at eventIndex = " + (eventIndex + 1));
                                 EvioEvent event = evioFileReader.parseEvent(++eventIndex);
                                 if (event != null)  {
                                     eventTreePanel.setEvent(event);
                                     SpinnerNumberModel model = (SpinnerNumberModel) currentEvent.getModel();
-                                    model.setValue(event.getEventNumber());
+//System.out.println("next button: set spinner value to " + eventIndex);
+                                    model.setValue(eventIndex);
                                     // Do this here since "next" button is automatically
                                     // selected upon loading a file.
                                     model.setMinimum(1);
@@ -873,11 +875,13 @@ public class EventTreeMenu {
                         if (evioFileReader != null) {
                             try {
                                 if (eventIndex < 2) break;
+//System.out.println("prev button: looking at eventIndex = " + (eventIndex - 1));
 
                                 EvioEvent event = evioFileReader.parseEvent(--eventIndex);
                                 if (event != null)  {
                                     eventTreePanel.setEvent(event);
-                                    currentEvent.setValue(event.getEventNumber());
+//System.out.println("prev button: set spinner value to " + eventIndex);
+                                    currentEvent.setValue(eventIndex);
                                 }
 
                                 if (eventIndex < 2) prevButton.setEnabled(false);
@@ -932,17 +936,24 @@ public class EventTreeMenu {
                     int eventNum = model.getNumber().intValue();
                     int max = (Integer) model.getMaximum();
                     int min = (Integer) model.getMinimum();
-
+//System.out.println("spinner listener: val = " + eventNum);
+//System.out.println("                : max = " + max);
+//System.out.println("                : min = " + min);
                     if (currentEventMax != max) {
                         currentEventMax = max;
-                        return;
+//System.out.println("                : set currentEventMax to " + max);
+//                        return;
                     }
+
                     if (currentEventMin != min) {
                         currentEventMin = min;
-                        return;
+//System.out.println("                : set currentEventMin to " + min);
+//                        return;
                     }
+
                     if (currentEventNum != eventNum) {
                         currentEventNum = eventNum;
+//System.out.println("                : set currentEventNum to " + eventNum);
                     }
 
 
@@ -954,7 +965,6 @@ public class EventTreeMenu {
                                 EvioEvent event = evioFileReader.gotoEventNumber(eventIndex);
                                 if (event != null) {
                                     eventTreePanel.setEvent(event);
-                                    currentEvent.setValue(event.getEventNumber());
                                 }
 
                                 if (eventIndex > 1) prevButton.setEnabled(true);
