@@ -187,10 +187,10 @@ public class cMsgEventProducer {
         try {
             EventWriter eventWriterNew = null;
             if (addDictionary) {
-                eventWriterNew = new EventWriter(myBuf, 100, 3, dictionary, null);
+                eventWriterNew = new EventWriter(myBuf, 256, 3, dictionary, null);
             }
             else {
-                eventWriterNew = new EventWriter(myBuf, 100, 3, null, null);
+                eventWriterNew = new EventWriter(myBuf, 256, 3, null, null);
             }
 
             // event - bank of banks
@@ -281,10 +281,10 @@ public class cMsgEventProducer {
         try {
             EventWriter writer = null;
             if (addDictionary) {
-                writer = new EventWriter(myBuf, 100, 3, dictionary, null);
+                writer = new EventWriter(myBuf, 256, 3, dictionary, null);
             }
             else {
-                writer = new EventWriter(myBuf, 100, 3, null, null);
+                writer = new EventWriter(myBuf, 256, 3, null, null);
             }
 
             int numEvents=2, numRocs=2, ebId=3, roc1Id=1, roc2Id=2, detId=4;
@@ -384,7 +384,7 @@ public class cMsgEventProducer {
 
 
         try {
-            EventWriter writer = new EventWriter(myBuf, 100, 3, null, null);
+            EventWriter writer = new EventWriter(myBuf, 256, 3, null, null);
                                  //         sync, prestart,  go,    pause,  end
             int controlTypes[] = new int[] {0xFFD0, 0xFFD1, 0xFFD2, 0xFFD3, 0xFFD4};
 
