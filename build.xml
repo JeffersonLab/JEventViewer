@@ -16,9 +16,11 @@
     <property name="build.dir"     value="build" />
     <property name="build.classes" value="${build.dir}/classes" />
     <property name="build.lib"     value="${build.dir}/lib" />
-    <property name="local.jars"    value="java/jar" />
+    <property name="local.jars"    value="java/jars" />
     <property name="doc.dir"       value="doc/javadoc" />
-    <property name="jarName"       value="${build.lib}/JEventViewer-${jev.version}.jar" />
+    <property name="jarName"       value="JEventViewer-${jev.version}.jar" />
+    <property name="allJarNames"   value="JEventViewer-*.jar" />
+    <property name="jarPath"       value="${build.lib}/${jarName}" />
 
 
     <!-- Targets -->
@@ -34,15 +36,20 @@
         <echo message="       clean      - remove class files" />
         <echo message="       cleanall   - remove all generated files" />
         <echo message="       jar        - compile and create jar file" />
-        <echo message="       install    - create jar file and install into CODA" />
-        <echo message="                    if defined (in that order)" />
+        <echo message="       install    - create jar file and install into 'prefix'" />
+        <echo message="                    if given on command line by -Dprefix=dir'," />
+        <echo message="                    else install into CODA if defined" />
+        <echo message="       uninstall  - remove jar file previously installed into 'prefix'" />
+        <echo message="                    if given on command line by -Dprefix=dir'," />
+        <echo message="                    else installed into CODA if defined" />
         <echo message="       all        - clean, compile and create jar file" />
         <echo message="       javadoc    - create javadoc documentation" />
         <echo message="       developdoc - create javadoc documentation for developer" />
         <echo message="       undoc      - remove all javadoc documentation" />
         <echo message="       prepare    - create necessary directories" />
     </target>
-    
+
+
     <!-- Environment -->
     <target name="env">
         <echo message="Ant environment:" />
@@ -58,15 +65,38 @@
 
 
     <!-- ************************************************************* -->
-    <!-- Set the classpath by checking the CODA environmental variable -->
-    <target name="CODA_test">
-        <condition property="CODA_Defined">
+    <target name="installCheck"  >
+
+        <!-- Test to see if -Dprefix=<dir> used on command line -->
+        <condition property="prefixDefined">
+            <isset property="prefix"/>
+        </condition>
+
+        <!-- Test to see if CODA environmental variable defined -->
+        <condition property="codaDefined">
             <isset property="env.CODA"/>
         </condition>
+
+        <!-- Test to see if no installation directory defined   -->
+        <condition property="noInstallDir">
+            <and>
+                <not>
+                    <isset property="prefix"/>
+                </not>
+                <not>
+                    <isset property="env.CODA"/>
+                </not>
+            </and>
+        </condition>
+
     </target>
 
+
+    <!-- Set Classpath, ignore caller's classpath -->
+    <property name="build.sysclasspath" value="ignore" />
+
     <!-- if $CODA is set, use that for classpath -->
-    <target name="CODA_cp" depends="CODA_test" if="CODA_Defined">
+    <target name="CODA_cp" depends="installCheck,CODA_nocp" if="codaDefined">
         <path id="classpath">
             <fileset dir="${env.CODA}/common/jar" >
                 <include name="*.jar" />
@@ -76,7 +106,7 @@
     </target>
 
     <!-- if $CODA is NOT set, use jars provided with this distribution -->
-    <target name="CODA_nocp" depends="CODA_test" unless="CODA_Defined">
+    <target name="CODA_nocp" unless="codaDefined">
         <path id="classpath">
             <fileset dir="${local.jars}" >
                 <include name="*.jar" />
@@ -87,12 +117,19 @@
     <!-- ************************************************************* -->
 
 
+
     <!-- Prepare things by creating directories -->
     <target name="prepare">
         <mkdir dir="${build.dir}" />
         <mkdir dir="${build.classes}" />
         <mkdir dir="${build.lib}" />
+        <antcall target="preparePrefixDir"/>
     </target>
+
+    <target name="preparePrefixDir" if="prefixDefined">
+        <mkdir dir="${prefix}/jar" />
+    </target>
+
 
     <!-- Clean by removing class files -->
     <target name="clean" description="Remove all class files">
@@ -108,7 +145,7 @@
     </target>
     
     <!-- Compile all source -->
-    <target name="compile" depends="prepare,CODA_cp,CODA_nocp" description="Compiles all source code.">
+    <target name="compile" depends="prepare,CODA_cp" description="Compiles all source code.">
         <javac destdir="${build.classes}" debug="${javac.debug}" optimize="yes" >
             <classpath refid="classpath" />
             <src path="${src.dir}" />
@@ -150,7 +187,7 @@
 
     <!-- Create Jar file -->
     <target name="jar" depends="compile" description="Generates jar file.">
-        <jar jarfile="${jarName}" manifest="${src.dir}/org/jlab/coda/eventViewer/manifest.mf">
+        <jar jarfile="${jarPath}" manifest="${src.dir}/org/jlab/coda/eventViewer/manifest.mf">
             <fileset dir="${build.classes}" excludes="*.class" />
         </jar>
     </target>
@@ -160,19 +197,64 @@
     <target name="all" depends="clean,jar" description="Cleans, compile, then builds jar file." />
 
 
+
     <!-- Install Jar file -->
-    <target name="install" depends="jar,CODA_test" description="Installs jar file.">
-        <antcall target="CODA_def_install"/>
-        <antcall target="CODA_no_install"/>
+    <target name="install" depends="jar,installCheck" description="Installs jar file.">
+        <antcall target="error"/>
+        <antcall target="installInPrefix"/>
+        <antcall target="installInCODA"/>
     </target>
-        
-    <target name="CODA_def_install" if="CODA_Defined">
-        <echo message="Install ${jarName} into ${env.CODA}/common/jar" level="info" />
-        <copy file="${jarName}" todir="${env.CODA}/common/jar"/>
+
+    <!-- Install in prefix -->
+    <target name="installInPrefix" if="prefixDefined">
+        <echo>Install ${jarName} into ${prefix}</echo>
+        <delete>
+            <fileset dir="${prefix}/jar" includes="${allJarNames}" />
+        </delete>
+        <copy file="${jarPath}" todir="${prefix}/jar"/>
     </target>
-    
-    <target name="CODA_no_install" unless="CODA_Defined">
-        <fail message="Define the CODA environmental variable to install, quitting" />
+
+    <!-- Install in $CODA -->
+    <target name="installInCODA" unless="prefixDefined" if="codaDefined">
+        <echo>Install ${jarName} into ${env.CODA}/common/jar</echo>
+        <delete>
+            <fileset dir="${env.CODA}/common/jar" includes="${allJarNames}" />
+        </delete>
+        <copy file="${jarPath}" todir="${env.CODA}/common/jar"/>
     </target>
+
+    <!-- No installation directory defined -->
+    <target name="error" if="noInstallDir">
+        <fail message="CODA env var not defined and -Dprefix not used, jar NOT installed" />
+    </target>
+
+
+
+    <!-- Uninstall Jar file -->
+    <target name="uninstall" depends="installCheck" description="Uninstalls jar file.">
+        <antcall target="error2"/>
+        <antcall target="uninstallFromPrefix"/>
+        <antcall target="uninstallFromCODA"/>
+    </target>
+
+    <!-- Uninstall from prefix -->
+    <target name="uninstallFromPrefix" if="prefixDefined">
+        <echo>Remove ${jarName} from ${prefix}</echo>
+        <delete file="${prefix}/jar/${jarName}"/>
+    </target>
+
+    <!-- Uninstall from $CODA -->
+    <target name="uninstallFromCODA" unless="prefixDefined" if="codaDefined">
+        <echo>Remove ${jarName} from ${env.CODA}/common/jar</echo>
+        <delete file="${env.CODA}/common/jar/${jarName}"/>
+    </target>
+
+    <!-- No installation directory defined to uninstall from -->
+    <target name="error2" if="noInstallDir">
+        <fail message="Installation directory not defined, jar NOT installed" />
+    </target>
+
+
+
 
 </project>
