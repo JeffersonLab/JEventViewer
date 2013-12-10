@@ -6,6 +6,7 @@ import javax.swing.UIManager.LookAndFeelInfo;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.io.File;
 
 /**
  * This is a simple GUI that displays an evio event in a tree. It allows the user to open event files and
@@ -68,7 +69,16 @@ public class EventTreeFrame extends JFrame  {
         // Place tree panel in place
 		add(eventTreePanel, BorderLayout.CENTER);
         add(topPanel, BorderLayout.NORTH);
-	}
+
+        // Set a default dictionary from command line
+        String tmp = System.getProperty("dictionary");
+        if (tmp != null) {
+            File dictFile = new File(tmp);
+            if (dictFile.exists() && dictFile.isFile()) {
+                eventTreeMenu.openDictionaryFile(dictFile);
+            }
+        }
+    }
 
     /**
      * Add the menus to the frame.
@@ -158,14 +168,45 @@ public class EventTreeFrame extends JFrame  {
 	}
 
 
-	/**
+    /**
+     * Method to decode the command line used to start this application.
+     * @param args command line arguments
+     */
+    private static void decodeCommandLine(String[] args) {
+        // loop over all args
+        for (String arg : args) {
+            if (arg.equalsIgnoreCase("-h") ||
+                    arg.equalsIgnoreCase("-help") ) {
+                usage();
+                System.exit(-1);
+            }
+            // ignore all other args (not -D which is special)
+        }
+    }
+
+
+    /** Method to print out correct program command line usage. */
+    private static void usage() {
+        System.out.println("\nUsage:\n\n" +
+                "   java org.jlab.coda.eventViewer.EventTreeFrame\n" +
+                "        [-h]                   print this help\n" +
+                "        [-help]                print this help\n" +
+                "        [-DfilePath=xxx]       set default directory for data files\n" +
+                "        [-DdictionaryPath=xxx] set default dictionary for dictionary files\n" +
+                "        [-Ddictionary=xxx]     set name of default dictionary file\n");
+    }
+
+
+    /**
 	 * Main program for launching the frame.
 	 *
 	 * @param args command line arguments--ignored.
 	 */
 	public static void main(String args[]) {
 
-		final EventTreeFrame frame = new EventTreeFrame();
+        decodeCommandLine(args);
+
+        final EventTreeFrame frame = new EventTreeFrame();
 
 		// now make the frame visible, in the AWT thread
 		EventQueue.invokeLater(new Runnable() {
