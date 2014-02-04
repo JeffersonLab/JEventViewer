@@ -171,7 +171,8 @@
                  access="public"
                  destdir="${doc.dir}"
                  use="true" >
-        </javadoc>
+             <classpath refid="classpath" />
+       </javadoc>
     </target>
     
     <!-- Javadoc for developer -->
@@ -182,6 +183,7 @@
                  access="package"
                  destdir="${doc.dir}"
                  use="true" >
+             <classpath refid="classpath" />
         </javadoc>
     </target>
 
