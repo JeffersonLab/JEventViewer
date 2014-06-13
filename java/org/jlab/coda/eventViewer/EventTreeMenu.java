@@ -1929,12 +1929,7 @@ public class EventTreeMenu {
             dataFilePath = selectedFile.getAbsolutePath();
 
             // remember the file filter used
-            if (chooser.getFileFilter().getDescription().equals("EVIO Event Files")) {
-                useEvioFileFilter = true;
-            }
-            else {
-                useEvioFileFilter = false;
-            }
+            useEvioFileFilter = chooser.getFileFilter().getDescription().equals("EVIO Event Files");
 
             if (selectedFile.length() < 1) {
                 JOptionPane.showMessageDialog(new Frame(),
@@ -1944,9 +1939,6 @@ public class EventTreeMenu {
 
                 return evioFileReader;
             }
-
-            // set the text field
-            eventInfoPanel.setSource(dataFilePath);
 
             try {
                 // Try creating a new reader, if it fails the old is retained
@@ -1990,6 +1982,9 @@ public class EventTreeMenu {
                 }
 
                 eventIndex = 0;
+
+                // set the text field
+                eventInfoPanel.setSource(dataFilePath);
             }
             catch (Exception e) {
 e.printStackTrace();
