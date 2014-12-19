@@ -1794,7 +1794,7 @@ public class EventTreeMenu {
         if (file == null) {
             return;
         }
-        new FileFrame(file);
+        new FileFrameBig(file);
     }
 
     /**
