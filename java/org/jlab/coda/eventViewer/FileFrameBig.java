@@ -4,14 +4,14 @@ package org.jlab.coda.eventViewer;
 import javax.swing.*;
 import javax.swing.UIManager.LookAndFeelInfo;
 import javax.swing.border.*;
-import javax.swing.event.ChangeEvent;
-import javax.swing.event.ChangeListener;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import java.awt.*;
 import java.awt.event.*;
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -25,12 +25,14 @@ import java.util.HashMap;
  * This class implements a window that displays a file's bytes as hex, 32 bit integers.
  * @author timmer
  */
-public class FileFrameBig extends JFrame  {
+public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
     /** The table containing event data. */
     private JTable dataTable;
 
     private MyTableModel dataTableModel;
+
+    private MyRenderer dataTableRenderer;
 
     /** Widget allowing scrolling of table widget. */
     private JScrollPane tablePane;
@@ -47,19 +49,14 @@ public class FileFrameBig extends JFrame  {
     /** Buffer of memory mapped file. */
     private SimpleMappedMemoryHandler mappedMemoryHandler;
 
-    /** A button for selecting the next set of rows/file-data. */
-    private JButton nextButton;
-    /** A button for selecting previous set of rows/file-data. */
-    private JButton prevButton;
-    /** A button for jumping to the next block header occurrence. */
-    private JButton nextBlockButton;
-    /** A button for jumping to the previous block header occurrence. */
-    private JButton prevBlockButton;
+    private JButton searchButtonStop;
+    private JProgressBar progressBar;
 
     private JButton searchButtonNext;
     private JButton searchButtonPrev;
     private JButton gotoButton;
     private JComboBox<String> searchStringBox;
+    private String searchString;
     private JSpinner currentEvent;
     private JLabel messageLabel;
 
@@ -70,10 +67,14 @@ public class FileFrameBig extends JFrame  {
     private JRadioButton pageScrollButton;
     private ButtonGroup  radioGroup;
 
-    /** Row to start searching (starts at 0). */
-    private int searchStartRow = 0;
-    /** Col to start searching (starts at 1). */
-    private int searchStartCol = 0;
+    /** Last row to be searched (rows start at 0). */
+    private int lastSearchedRow = -1;
+    /** Last col to be searched (cols start at 1). */
+    private int lastSearchedCol = 0;
+
+    /** Kill search that's taking too long. */
+    private volatile boolean stopSearch;
+    private volatile boolean searchDone = true;
 
     /**
 	 * Constructor for a simple viewer for a file's bytes.
@@ -120,7 +121,15 @@ public class FileFrameBig extends JFrame  {
         ActionListener al_switch = new ActionListener() {
             public void actionPerformed(ActionEvent e) {
                 messageLabel.setText(" ");
+                comments.clear();
+                dataTableModel.clearHighLights();
                 switchEndian();
+
+                // Reinstate selection of index (not search find)
+                if (wordIndexButton.isSelected() || pageScrollButton.isSelected()) {
+                    dataTable.setRowSelectionInterval(lastSearchedRow, lastSearchedRow);
+                    dataTable.setColumnSelectionInterval(lastSearchedCol, lastSearchedCol);
+                }
             }
         };
         switchMenuItem = new JMenuItem("To little endian");
@@ -132,15 +141,8 @@ public class FileFrameBig extends JFrame  {
             public void actionPerformed(ActionEvent e) {
                 messageLabel.setText(" ");
                 comments.clear();
-                // remember which rows are selected
-                int[] sRows = dataTable.getSelectedRows();
-                MyTableModel tm = (MyTableModel)dataTable.getModel();
-                tm.fireTableDataChanged();
-                // re-select the rows
-                if (sRows.length > 0) {
-                    dataTable.setRowSelectionInterval(sRows[0], sRows[sRows.length-1]);
-                }
-            }
+                dataTableModel.fireTableDataChanged();
+           }
         };
         JMenuItem clearMenuItem = new JMenuItem("Clear comments");
         clearMenuItem.addActionListener(al_clearComments);
@@ -290,15 +292,16 @@ System.out.println("Jump to BOTTOM of prev map");
         }
 
         dataTable.scrollRectToVisible(rec);
+        dataTableModel.dataChanged();
     }
 
 
     /**
-     * Jump up or down to the specified word in file.
+     * Jump up or down to the specified word position in file.
      * It moves so that a full row is exactly at the top.
-     * @param word byte index of data
+     * @param position index of data word to view
      */
-    private void scrollToIndex(long word) {
+    private void scrollToIndex(long position) {
         JViewport viewport = tablePane.getViewport();
 
         // The location of the viewport relative to the table
@@ -308,39 +311,43 @@ System.out.println("Jump to BOTTOM of prev map");
         Dimension dim = viewport.getExtentSize();
 
         // Switch to correct map
-        int[] mapRowCol = dataTableModel.getMapRowCol(word);
+        int[] mapRowCol = dataTableModel.getMapRowCol(position);
         if (mapRowCol == null) {
             JOptionPane.showMessageDialog(this, "Entry exceeded file size", "Return",
                     JOptionPane.INFORMATION_MESSAGE);
 
             return;
         }
-        System.out.println("map = " + mapRowCol[0] + ", row = " + mapRowCol[1] +
-                           ", col " + mapRowCol[2]);
+//System.out.println("map = " + mapRowCol[0] + ", row = " + mapRowCol[1] +
+//                   ", col " + mapRowCol[2]);
         dataTableModel.setMapIndex(mapRowCol[0]);
 
         // Where we jump to at each button press
         int finalY = (mapRowCol[1] - 5)*dataTable.getRowHeight();
         Rectangle rec = new Rectangle(pt.x, finalY, dim.width, dim.height);
-        searchStartRow = mapRowCol[1];
-
-        // Select row of word
-        dataTable.setRowSelectionInterval(searchStartRow,searchStartRow);
+        lastSearchedRow = mapRowCol[1];
+        lastSearchedCol = mapRowCol[2];
 
         dataTable.scrollRectToVisible(rec);
+        dataTableModel.dataChanged();
+
+        // Select cell
+        dataTable.setRowSelectionInterval(lastSearchedRow, lastSearchedRow);
+        dataTable.setColumnSelectionInterval(lastSearchedCol, lastSearchedCol);
     }
 
 
 
     /**
-     * Jump up or down to the next evio block header rows.
+     * Jump up or down to the row containing a cell with value = findValue.
      * It moves so that a full row is exactly at the top.
      * @param down {@code true}  if going to end of file,
      *             {@code false} if going to top of file
      * @param findValue value of word to find
      * @param comments comments to add to found value's row
      */
-    private void scrollToAndHighlight(boolean down, long findValue, String comments) {
+    private void scrollToAndHighlight(boolean down, long findValue,
+                                      String comments, SearchTask task) {
         JViewport viewport = tablePane.getViewport();
 
         // The location of the viewport relative to the table
@@ -360,10 +367,17 @@ System.out.println("Jump to BOTTOM of prev map");
 
         long val;
         Rectangle rec = null;
-        int row, finalY, rowY, viewY;
+        int row, startingCol=1, finalY, rowY, viewY;
         boolean atTop = pt.y == 0;
         boolean atBottom = atEnd(viewport);
         boolean foundValue = false;
+
+        // Map index starts at 0
+        int maxMapIndex = dataTableModel.getMapCount() - 1;
+        int startingMapIndex = dataTableModel.getMapIndex();
+
+        stopSearch = false;
+        searchDone = false;
 
         out:
         while (true) {
@@ -374,47 +388,58 @@ System.out.println("Jump to BOTTOM of prev map");
             if (down) {
                 // Where do we start the search?
 
-                // If last val found is in last col
-                if (searchStartCol == 5) {
-                    // If there is no next row ...
-System.out.println("searchStartCol = 5 so, searchStartRow = " + searchStartRow +
-                    ", rowCount -1  = " + (rowCount -1));
-                    if (searchStartRow == rowCount-1) {
-                        row = rowCount-1;
-                        // This will skip over while() and go to next map
-                        searchStartCol = 6;
-                    }
-                    else {
-                        // Start at end of next row
-                        row = ++searchStartRow;
-                        searchStartCol = 1;
-System.out.println("searchStartCol = 5 so, searchStartRow = " + searchStartRow +
-                                            ", searchStartCOl  = " + searchStartCol);
-                    }
+                // If we're just beginning ...
+                if (lastSearchedRow < 0) {
+                    row = 0;
+                    startingCol = 1;
                 }
                 else {
-                    // Start at the row of the last value we found
-                    row = searchStartRow;
-                    // Start after the column of the last value we found
-                    searchStartCol++;
+                    // If last val found is in last col
+                    if (lastSearchedCol == 5) {
+                        // If there is no next row ...
+                        if (lastSearchedRow == rowCount - 1) {
+                            // This will skip over next while() and go to next map
+                            row = rowCount;
+                        }
+                        else {
+                            // Start at end of next row
+                            row = lastSearchedRow + 1;
+                            startingCol = 1;
+                        }
+                    }
+                    else {
+                        // Start at the row of the last value we found
+                        row = lastSearchedRow;
+                        // Start after the column of the last value we found
+                        startingCol = lastSearchedCol + 1;
+                    }
                 }
-System.out.println("\nStart looking at row = " + row + ", col = " + searchStartCol);
+System.out.println("\nStart looking at row = " + row + ", col = " + startingCol);
 
                 while (row < rowCount) {
 
-                    for (int col=searchStartCol; col < 6; col++) {
+                    for (int col = startingCol; col < 6; col++) {
+                        // Stop search now
+                        if (stopSearch) {
+                            foundValue = false;
+                            break out;
+                        }
+
                         // Check value of column containing file data at given row
                         val = dataTableModel.getLongValueAt(row, col);
 
+                        // Set row & col being searched right now
+                        lastSearchedRow = row;
+                        lastSearchedCol = col;
+
                         // If we found a match in a table's element ...
                         if (val == findValue)  {
-System.out.println("Found val # at row = " + row + ", col = " + col);
-                            MyTableModel model = (MyTableModel)dataTable.getModel();
-                            model.highListCell(row, col);
+System.out.println("    Found at row = " + row + ", col = " + col);
+                            dataTableModel.highListCell(row, col);
 
                             // Mark it in comments
                             if (comments != null) {
-                                model.setValueAt(comments, row, 6);
+                                dataTableModel.setValueAt(comments, row, 6);
                             }
 
                             // Y position of row with found value
@@ -424,70 +449,84 @@ System.out.println("Found val # at row = " + row + ", col = " + col);
 
                             // If found value's row is currently visible ...
                             if (rowY >= viewY && rowY <= viewY + viewHeight) {
-                                System.out.println("Do NOT change view");
+//System.out.println("Do NOT change view");
+                                dataTableModel.dataChanged();
+                                // Select cell of found value
+                                dataTable.setRowSelectionInterval(row,row);
+                                dataTable.setColumnSelectionInterval(col, col);
                             }
                             else {
                                 // Place found row 5 rows below view's top
                                 finalY = (row - 5)*dataTableRowHeight;
                                 rec = new Rectangle(pt.x, finalY, viewWidth, viewHeight);
+                                // Selection will be made AFTER jump to view (at very end)
                             }
-
-                            // Select row of found value
-                            dataTable.setRowSelectionInterval(row,row);
-
-                            // Set row & col to start next search
-                            searchStartRow = row;
-                            searchStartCol = col;
 
                             foundValue = true;
                             break out;
-                        }
-                        else {
-                            searchStartCol = 1;
                         }
                     }
 
                     // Go to next row
                     row++;
+                    startingCol = 1;
                 }
             }
             else {
                 // Where do we start the search?
 
-                // If last val found is in first col
-                if (searchStartCol == 1) {
-                    // If there is no previous row ...
-                    if (searchStartRow == 0) {
-                        row = 0;
-                    }
-                    else {
-                        // Start at end of previous row
-                        row = --searchStartRow;
-                        searchStartCol = 5;
-                    }
+                // If we're just beginning ...
+                if (lastSearchedRow < 0) {
+                    // We can't go backwards, so search is done
+                    row = -1;
                 }
                 else {
-                    // Start at the row of the last value we found
-                    row = searchStartRow;
-                    // Start before the column of the last value we found
-                    searchStartCol--;
+                    // If last val found is in first col
+                    if (lastSearchedCol == 1) {
+                        // If there is no previous row ...
+                        if (lastSearchedRow == 0) {
+                            // We can't go backwards, so search is done
+                            row = -1;
+                        }
+                        else {
+                            // Start at end of previous row
+                            row = lastSearchedRow - 1;
+                            startingCol = 5;
+                        }
+                    }
+                    else {
+                        // Start at the row of the last value we found
+                        row = lastSearchedRow;
+                        // Start before the column of the last value we found
+                        startingCol = lastSearchedCol - 1;
+                    }
                 }
-System.out.println("\nStart looking at row = " + row + ", col = " + searchStartCol);
+System.out.println("\nStart looking at row = " + row + ", col = " + startingCol);
 
                 while (row >= 0) {
+
                     // In general, start with right-most col and go left
-                    for (int col=searchStartCol; col > 0; col--) {
+                    for (int col = startingCol; col > 0; col--) {
+                        // Stop search now
+                        if (stopSearch) {
+                            foundValue = false;
+                            break out;
+                        }
+
                         val = dataTableModel.getLongValueAt(row, col);
+
+                        // Set row & col being searched right now
+                        lastSearchedRow = row;
+                        lastSearchedCol = col;
 
                         // If we found a match in a table's element ...
                         if (val == findValue)  {
-System.out.println("Found val # at row = " + row + ", col = " + col);
-                            MyTableModel model = (MyTableModel)dataTable.getModel();
-                            model.highListCell(row, col);
+System.out.println("    Found at row = " + row + ", col = " + col);
+                            dataTableModel.highListCell(row, col);
 
                             // Mark it in comments
                             if (comments != null) {
-                                model.setValueAt(comments, row, 6);
+                                dataTableModel.setValueAt(comments, row, 6);
                             }
 
                             // Y position of row with found value
@@ -497,7 +536,11 @@ System.out.println("Found val # at row = " + row + ", col = " + col);
 
                             // If found value's row is currently visible ...
                             if (rowY >= viewY && rowY <= viewY + viewHeight) {
-System.out.println("Do NOT change view");
+//System.out.println("Do NOT change view");
+                                dataTableModel.dataChanged();
+                                // Select cell of found value
+                                dataTable.setRowSelectionInterval(row,row);
+                                dataTable.setColumnSelectionInterval(col, col);
                             }
                             else {
                                 // Place found row 5 rows above view's bottom
@@ -505,117 +548,161 @@ System.out.println("Do NOT change view");
 //System.out.println("rows viewed = " + numRowsViewed + ", final row = " + (row + numRowsViewed - 5));
                                 finalY = (row - numRowsViewed + 6)*dataTableRowHeight;
                                 rec = new Rectangle(pt.x, finalY, viewWidth, viewHeight);
+                                // Selection will be made AFTER jump to view (at very end)
                             }
-
-                            // Select row of found value
-                            dataTable.setRowSelectionInterval(row,row);
-
-                            // Set row & col to start next search
-                            searchStartRow = row;
-                            searchStartCol = col;
 
                             foundValue = true;
                             break out;
-                        }
-                        else {
-                            searchStartCol = 5;
                         }
                     }
 
                     // Go to previous row
                     row--;
+                    startingCol = 5;
                 }
             }
 
-            if (!foundValue) {
-                if (down) {
-                    System.out.println("Did NOT find val, at bottom = " + atBottom);
-                    // See if there are more data (maps) to follow.
-                    // If so, go to the next map and search there.
-                    if (!dataTableModel.nextMap()) {
-                        break;
-                    }
-                    searchStartRow = 0;
-                    searchStartCol = 1;
-                }
-                else {
-                    System.out.println("Did NOT find val, at top = " + atTop);
-                    // See if there are more data (maps) before.
-                    // If so, go to the previous map and search there.
-                    if (!dataTableModel.previousMap()) {
-                        break;
-                    }
-                    searchStartRow = dataTableModel.getRowCount() - 1;
-                    searchStartCol = 5;
-                }
-                continue;
-            }
+            // If we're here, we did NOT find any value
 
-            break;
+            if (down) {
+System.out.println("Did NOT find val, at bottom = " + atBottom +
+                   ", stopSearch = " + stopSearch);
+                // See if there are more data (maps) to follow.
+                // If so, go to the next map and search there.
+                if (!dataTableModel.nextMap()) {
+                    dataTable.clearSelection();
+                    break;
+                }
+
+                // Update progress
+                if (task != null) {
+                    int progressPercent;
+                    int currentMapIndex = dataTableModel.getMapIndex();
+                    if (startingMapIndex == maxMapIndex || currentMapIndex == maxMapIndex) {
+                        progressPercent = 100;
+                    }
+                    else {
+                        progressPercent = 100*(currentMapIndex - startingMapIndex)/(maxMapIndex - startingMapIndex);
+                    }
+System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex +
+                   ", max = " + maxMapIndex + ", prog = " + progressPercent);
+                    task.setTaskProgress(progressPercent);
+                }
+
+                // Start at beginning of next map
+                lastSearchedRow = -1;
+                lastSearchedCol = 0;
+            }
+            else {
+System.out.println("Did NOT find val, at top = " + atTop);
+                // See if there are more data (maps) before.
+                // If so, go to the previous map and search there.
+                if (!dataTableModel.previousMap()) {
+                    dataTable.clearSelection();
+                    break;
+                }
+
+                // Update progress
+                if (task != null) {
+                    int progressPercent;
+                    int currentMapIndex = dataTableModel.getMapIndex();
+                    if (startingMapIndex == 0 || currentMapIndex == 0) {
+                        progressPercent = 100;
+                    }
+                    else {
+                        progressPercent = 100*(startingMapIndex - currentMapIndex)/startingMapIndex;
+                    }
+System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex +
+                   ", max = " + maxMapIndex + ", prog = " + progressPercent);
+                    task.setTaskProgress(progressPercent);
+                }
+
+                // Start at end of previous map
+                lastSearchedRow = dataTableModel.getRowCount() - 1;
+                lastSearchedCol = 6;
+            }
         }
 
-//        // Where we jump to at each button press
-//        finalY = (searchStartRow - 5)*dataTable.getRowHeight();
-//        int viewY = viewport.getViewPosition().y;
-//        System.out.println("finalY = " + finalY + ", viewY = " + viewY + ", h = " +
-//                                   viewport.getExtentSize().height);
-//
-//        if (finalY >= viewY && finalY <= viewY + viewport.getExtentSize().height) {
-//            System.out.println("Do NOT change view");
-//            return;
-//        }
-//
-//        rec = new Rectangle(pt.x, finalY, dim.width, dim.height);
-
         if (!foundValue) {
-            messageLabel.setText("No value found");
+            if (stopSearch) {
+                messageLabel.setText("Search Stopped");
+            }
+            else {
+                messageLabel.setText("No value found");
+            }
+
+            // Set view at top if going up, bottom if going down
+            if (down) {
+                finalY = (dataTableModel.getRowCount() - 1 - 5)*dataTableRowHeight;
+                rec = new Rectangle(pt.x, finalY, viewWidth, viewHeight);
+                dataTable.scrollRectToVisible(rec);
+            }
+            else {
+                rec = new Rectangle(pt.x, 0, viewWidth, viewHeight);
+                dataTable.scrollRectToVisible(rec);
+            }
+
+            dataTableModel.dataChanged();
+            searchDone = true;
             return;
         }
 
+        if (rec != null) {
+            dataTable.scrollRectToVisible(rec);
+            dataTableModel.dataChanged();
 
-//        // If next evio block header not found ...
-//        if (rec == null) {
-//            if (atTop) {
-//                boolean topRowsSelected = false;
-//                int[] sRows = dataTable.getSelectedRows();
-//                if (sRows.length == 1 && sRows[0] == 0) {
-//                    topRowsSelected = true;
-//                }
-//                // Error: if at top AND
-//                //          trying to go down OR
-//                //          trying to go up with no top rows selected
-//                if (down || !topRowsSelected)  {
-//                    messageLabel.setText("No evio block header found");
-//                }
-//            }
-//            else if (atBottom) {
-//                boolean botRowsSelected = false;
-//                int[] sRows = dataTable.getSelectedRows();
-//                if (sRows.length == 1 && (sRows[sRows.length-1] == dataTable.getRowCount()-1)) {
-//                    botRowsSelected = true;
-//                }
-//                // Error: if at bottom AND
-//                //          trying to up OR
-//                //          trying to go down with no bottom rows selected
-//                if (!down || !botRowsSelected)  {
-//                    messageLabel.setText("No evio block header found");
-//                }
-//            }
-//            // Error: if not at top or bottom
-//            else {
-//                messageLabel.setText("No evio block header found");
-//            }
-//
-//            // Where we jump to at each button press
-//            finalY = (searchStartRow - 5)*dataTable.getRowHeight();
-//            rec = new Rectangle(pt.x, finalY, dim.width, dim.height);
-//        }
+            // Select cell of found value (after jump so it's visible)
+            dataTable.setRowSelectionInterval(lastSearchedRow,lastSearchedRow);
+            dataTable.setColumnSelectionInterval(lastSearchedCol, lastSearchedCol);
+        }
 
-        if (rec != null) dataTable.scrollRectToVisible(rec);
+        searchDone = true;
     }
 
 
-    private void handleWordValueSearch(boolean down, boolean findBlock) {
+
+    /**
+     * A SwingWorker thread to handle a possibly lengthy search.
+     */
+    class SearchTask extends SwingWorker<Void, Void> {
+        private final boolean down;
+        private final long value;
+        private String label;
+
+        public SearchTask(boolean down, long value, String label) {
+            this.down = down;
+            this.value = value;
+            this.label = label;
+        }
+
+        // Main search task executed in background thread
+        @Override
+        public Void doInBackground() {
+            disableControlsForSearch();
+            scrollToAndHighlight(down, value, label, this);
+            return null;
+        }
+
+        public void setTaskProgress(int p) {
+            setProgress(p);
+        }
+
+        // Executed in event dispatching thread
+        @Override
+        public void done() {
+            searchDone = true;
+            setProgress(0);
+            progressBar.setString("Done");
+            progressBar.setValue(0);
+
+            Toolkit.getDefaultToolkit().beep();
+            enableControls();
+        }
+    }
+
+
+
+    private void handleWordValueSearch(final boolean down, boolean findBlock) {
         messageLabel.setText(" ");
         long l = 0xc0da0100L;
 
@@ -638,12 +725,17 @@ System.out.println("Do NOT change view");
             }
         }
 
+        String label = null;
+        final long ll = l;
+
         if (l == 0xc0da0100L) {
-            scrollToAndHighlight(down, l, "Block Header");
+            label = "Block Header";
         }
-        else {
-            scrollToAndHighlight(down, l, null);
-        }
+
+        // Use swing worker thread to do time-consuming search in the background
+        SearchTask task = new SearchTask(down, ll, label);
+        task.addPropertyChangeListener(this);
+        task.execute();
     }
 
 
@@ -670,6 +762,42 @@ System.out.println("Do NOT change view");
     }
 
 
+    /** Invoked when task's progress property changes. */
+    public void propertyChange(PropertyChangeEvent evt) {
+        if (searchDone) {
+//            System.out.println("propChange: search is done");
+            return;
+        }
+
+        if ("progress".equalsIgnoreCase(evt.getPropertyName())) {
+//System.out.println("propChange: set bar to " + ((Integer) evt.getNewValue()));
+            progressBar.setValue((Integer) evt.getNewValue());
+        }
+    }
+
+
+    private void disableControlsForSearch() {
+        searchStringBox .setEnabled(false);
+        searchButtonNext.setEnabled(false);
+        searchButtonPrev.setEnabled(false);
+        wordValueButton. setEnabled(false);
+        wordIndexButton. setEnabled(false);
+        pageScrollButton.setEnabled(false);
+        evioBlockButton. setEnabled(false);
+        evioFaultButton. setEnabled(false);
+    }
+
+
+    private void enableControls() {
+        searchStringBox .setEnabled(true);
+        searchButtonNext.setEnabled(true);
+        searchButtonPrev.setEnabled(true);
+        wordValueButton. setEnabled(true);
+        wordIndexButton. setEnabled(true);
+        pageScrollButton.setEnabled(true);
+        evioBlockButton. setEnabled(true);
+        evioFaultButton. setEnabled(false);
+    }
 
 
     /** Add a panel controlling viewed data to this frame. */
@@ -710,7 +838,7 @@ System.out.println("Do NOT change view");
         wordValueButton.setActionCommand("1");
         wordValueButton.setSelected(true);
 
-        wordIndexButton = new JRadioButton("Word Index");
+        wordIndexButton = new JRadioButton("Word Position");
         wordIndexButton.setMnemonic(KeyEvent.VK_I);
         wordIndexButton.setActionCommand("2");
 
@@ -725,7 +853,7 @@ System.out.println("Do NOT change view");
         evioFaultButton = new JRadioButton("Evio Fault");
         evioFaultButton.setMnemonic(KeyEvent.VK_F);
         evioFaultButton.setActionCommand("5");
-
+        evioFaultButton.setEnabled(false);
 
         // Group the radio buttons
         radioGroup = new ButtonGroup();
@@ -745,15 +873,51 @@ System.out.println("Do NOT change view");
         controlPanel.add(Box.createVerticalStrut(5));
         controlPanel.add(radioButtonPanel);
 
-//        // Register a listener for the radio buttons
-//        ActionListener al_radio = new ActionListener() {
-//            public void actionPerformed(ActionEvent e) {
-//            }
-//        };
-//        wordValueButton.addActionListener(al_radio);
-//        wordIndexButton.addActionListener(al_radio);
-//        evioBlockButton.addActionListener(al_radio);
-//        evioFaultButton.addActionListener(al_radio);
+        // Register a listener for the radio buttons
+        ActionListener al_radio = new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                int cmd = Integer.parseInt(radioGroup.getSelection().getActionCommand());
+
+                switch (cmd) {
+                    case 1:
+                        // Word Value
+                        searchButtonPrev.setEnabled(true);
+                        searchButtonNext.setText(" > ");
+                        searchStringBox.setEditable(true);
+                        break;
+                    case 2:
+                        // Word Index
+                        searchButtonPrev.setEnabled(false);
+                        searchButtonNext.setText("Go");
+                        searchStringBox.setEditable(true);
+                        break;
+                    case 3:
+                        // Page Scrolling
+                        searchButtonPrev.setEnabled(true);
+                        searchButtonNext.setText(" > ");
+                        searchStringBox.setEditable(false);
+                        break;
+                    case 4:
+                        // Evio Block
+                        searchButtonPrev.setEnabled(true);
+                        searchButtonNext.setText(" > ");
+                        // Only search for 0xc0da0100
+                        searchStringBox.setSelectedIndex(0);
+                        searchStringBox.setEditable(false);
+                        break;
+                    case 5:
+                        // Evio Fault
+                        break;
+                    default:
+                }
+            }
+        };
+
+        wordValueButton.addActionListener(al_radio);
+        wordIndexButton.addActionListener(al_radio);
+        evioBlockButton.addActionListener(al_radio);
+        evioFaultButton.addActionListener(al_radio);
+        pageScrollButton.addActionListener(al_radio);
 
         //----------------------------------
         // Input box
@@ -768,10 +932,17 @@ System.out.println("Do NOT change view");
                 int numItems = jcb.getItemCount();
                 boolean addNewItem = true;
 
-                if (selectedItem == null || selectedItem.equals("")) {
-                    addNewItem = false;
+                // If nothing has changed, do nothing
+                if (selectedItem == null ||
+                    selectedItem.equals("") ||
+                    selectedItem.equals(searchString)) {
+                    return;
                 }
-                else if (numItems == 0) {
+
+                searchString = selectedItem;
+                dataTableModel.clearHighLights();
+
+                if (numItems == 0) {
                     addNewItem = true;
                 }
                 else {
@@ -809,12 +980,29 @@ System.out.println("Do NOT change view");
         //----------------------------------
         // Put search buttons in this panel
         //----------------------------------
+
+        Border compound3 = BorderFactory.createCompoundBorder(lineBorder, null);
+
+        compound3 = BorderFactory.createTitledBorder(
+                          compound3, "Search Controls",
+                          TitledBorder.CENTER,
+                          TitledBorder.TOP, null, Color.blue);
+
+        JPanel searchPanel = new JPanel();
+        searchPanel.setBorder(compound3);
+        BoxLayout boxLayout2 = new BoxLayout(searchPanel, BoxLayout.Y_AXIS);
+        searchPanel.setLayout(boxLayout2);
+
         JPanel searchButtonPanel = new JPanel();
-        searchButtonPanel.setLayout(new GridLayout(1, 2, 10, 0));
+        searchButtonPanel.setLayout(new GridLayout(1, 2, 3, 0));
 
         searchButtonPrev = new JButton(" < ");
         ActionListener al_search = new ActionListener() {
             public void actionPerformed(ActionEvent e) {
+                stopSearch = false;
+                progressBar.setValue(0);
+                progressBar.setString(null);
+
                 int cmd = Integer.parseInt(radioGroup.getSelection().getActionCommand());
 
                 switch (cmd) {
@@ -839,17 +1027,20 @@ System.out.println("Do NOT change view");
                         // Evio Fault
                         break;
                     default:
-
-
                 }
             }
         };
         searchButtonPrev.addActionListener(al_search);
+        searchButtonPrev.setPreferredSize(new Dimension(80, 25));
         searchButtonPanel.add(searchButtonPrev);
 
         searchButtonNext = new JButton(" > ");
         ActionListener al_searchNext = new ActionListener() {
             public void actionPerformed(ActionEvent e) {
+                stopSearch = false;
+                progressBar.setValue(0);
+                progressBar.setString(null);
+
                 int cmd = Integer.parseInt(radioGroup.getSelection().getActionCommand());
 
                 switch (cmd) {
@@ -874,17 +1065,41 @@ System.out.println("Do NOT change view");
                         // Evio Fault
                         break;
                     default:
-
-
                 }
             }
         };
         searchButtonNext.addActionListener(al_searchNext);
+        searchButtonNext.setPreferredSize(new Dimension(80, 25));
         searchButtonPanel.add(searchButtonNext);
-        searchButtonPanel.setPreferredSize(new Dimension(100, 25));
+
+        searchPanel.add(searchButtonPanel);
+
+
+        JPanel progressButtonPanel = new JPanel();
+        progressButtonPanel.setLayout(new GridLayout(2, 1, 0, 3));
+
+        // Progress bar defined
+        progressBar = new JProgressBar(0, 100);
+        progressBar.setValue(0);
+        progressBar.setStringPainted(true);
+
+        searchButtonStop = new JButton("Stop");
+        ActionListener al_searchStop = new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                stopSearch = true;
+            }
+        };
+        searchButtonStop.addActionListener(al_searchStop);
+
+        progressButtonPanel.add(searchButtonStop);
+        progressButtonPanel.add(progressBar);
+
+        searchPanel.add(Box.createVerticalStrut(3));
+        searchPanel.add(progressButtonPanel);
 
         controlPanel.add(Box.createVerticalStrut(10));
-        controlPanel.add(searchButtonPanel);
+        controlPanel.add(searchPanel);
+
 
         // Add error message widget
         messageLabel = new JLabel(" ");
@@ -933,30 +1148,32 @@ System.out.println("FILE SIZE = " + fileSize);
         // Set up the table widget for displaying data
         dataTableModel = new MyTableModel(fileSize);
         dataTable = new JTable(dataTableModel);
-        MyRenderer renderer = new MyRenderer(8);
-        renderer.setHorizontalAlignment(JLabel.RIGHT);
-        dataTable.setDefaultRenderer(String.class, renderer);
+        dataTableRenderer = new MyRenderer(8);
+        dataTableRenderer.setHorizontalAlignment(JLabel.RIGHT);
+        dataTable.setDefaultRenderer(String.class, dataTableRenderer);
         dataTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        // Start searching from last selected row
-        dataTable.getSelectionModel().addListSelectionListener(
-                new ListSelectionListener() {
-                    @Override
-                    public void valueChanged(ListSelectionEvent e) {
-                        if (e.getValueIsAdjusting()) return;
-                        int lastRowToChange  = e.getLastIndex();
-                        int firstRowToChange = e.getFirstIndex();
-                        if (searchStartRow == firstRowToChange) {
-                            searchStartRow = lastRowToChange;
-                            searchStartCol = 5;
+        dataTable.setCellSelectionEnabled(true);
+        dataTable.setSelectionBackground(Color.yellow);
+        // Start searching from mouse-clicked cell
+        dataTable.addMouseListener(
+                new MouseListener() {
+                    public void mouseClicked(MouseEvent e) {
+                        // Ignore mouse click during on-going search
+                        if (!searchDone ) {
+System.out.println("select listener: search is NOT done");
+                            return;
                         }
-                        else {
-                            searchStartRow = firstRowToChange;
-                            searchStartCol = 1;
-                        }
-                        System.out.println("change row: first = " + firstRowToChange +
-                                                   ", last = " + lastRowToChange);
-                        System.out.println("Start search at row " + searchStartRow);
+
+                        lastSearchedRow = dataTable.getSelectedRow();
+                        lastSearchedCol = dataTable.getSelectedColumn();
+System.out.println("select listener: row = " + lastSearchedRow +
+                   ", col = " + lastSearchedCol);
                     }
+
+                    public void mouseReleased(MouseEvent e) { }
+                    public void mousePressed(MouseEvent e)  { }
+                    public void mouseEntered(MouseEvent e)  { }
+                    public void mouseExited(MouseEvent e)   { }
                 }
         );
 
@@ -990,6 +1207,7 @@ System.out.println("FILE SIZE = " + fileSize);
         private int mapIndex;
 
         private final long maxWordIndex;
+
         private final int mapCount;
 
         // 5 words/row, 4 bytes/word, 20 bytes/row
@@ -1001,7 +1219,7 @@ System.out.println("FILE SIZE = " + fileSize);
         private final long maxWordsPerMap = maxRowsPerMap * wordsPerRow;
 
         // Column names won't change
-        private final String[] names = {"Word Index", "+1", "+2", "+3", "+4", "+5", "Comments"};
+        private final String[] names = {"Word Position", "+1", "+2", "+3", "+4", "+5", "Comments"};
         private final String[] columnNames = {names[0], names[1], names[2],
                                               names[3], names[4], names[5],
                                               names[6]};
@@ -1011,6 +1229,10 @@ System.out.println("FILE SIZE = " + fileSize);
             // Min file size = 4 bytes
             maxWordIndex = (fileSize-4L)/4L;
             mapCount = mappedMemoryHandler.getMapCount();
+        }
+
+        public int getMapCount() {
+            return mapCount;
         }
 
         /**
@@ -1025,7 +1247,7 @@ System.out.println("FILE SIZE = " + fileSize);
 
             mapIndex++;
             wordOffset = mapIndex*maxWordsPerMap;
-            fireTableDataChanged();
+//            fireTableDataChanged();
             System.out.println("Jumped to NEXT map " + mapIndex);
             return true;
         }
@@ -1037,14 +1259,22 @@ System.out.println("FILE SIZE = " + fileSize);
 
             mapIndex--;
             wordOffset = mapIndex*maxWordsPerMap;
-            fireTableDataChanged();
+//            fireTableDataChanged();
             System.out.println("Jumped to PREV map " + mapIndex);
             return true;
+        }
+
+        public int getMapIndex() {
+            return mapIndex;
         }
 
         public void setMapIndex(int mi) {
             mapIndex = mi;
             wordOffset = mapIndex*maxWordsPerMap;
+            fireTableDataChanged();
+        }
+
+        public void dataChanged() {
             fireTableDataChanged();
         }
 
@@ -1085,14 +1315,12 @@ System.out.println("setWindowData: map index = " + mapIndex);
 
 
         public void highListCell(int row, int col) {
-            MyRenderer renderer = (MyRenderer)dataTable.getCellRenderer(row, col);
-            renderer.setHighlightCell(null, row, col);
+            dataTableRenderer.setHighlightCell(null, row, col);
             fireTableCellUpdated(row, col);
         }
 
         public void clearHighLights() {
-            MyRenderer renderer = (MyRenderer)dataTable.getCellRenderer(0,0);
-            renderer.clearHighlights();
+            dataTableRenderer.clearHighlights();
         }
 
         public int getColumnCount() {
