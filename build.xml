@@ -6,7 +6,7 @@
     <property environment="env"/>
     
     <!-- Version -->
-    <property name="jev.version" value="1.0" />
+    <property name="jev.version" value="1.1" />
 
     <!-- Debug -->
     <property name="javac.debug" value="on" />
