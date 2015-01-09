@@ -208,14 +208,11 @@ public class EventTreeFrame extends JFrame  {
 
         final EventTreeFrame frame = new EventTreeFrame();
 
-		// now make the frame visible, in the AWT thread
-		EventQueue.invokeLater(new Runnable() {
-			public void run() {
+		SwingUtilities.invokeLater(new Runnable() {
+		    public void run() {
 				frame.setVisible(true);
-			}
-
+		    }
 		});
-
 	}
 
 }
