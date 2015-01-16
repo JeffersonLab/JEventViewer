@@ -1,5 +1,7 @@
 package org.jlab.coda.eventViewer;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -31,20 +33,34 @@ public class SimpleMappedMemoryHandler {
     /** List containing each event's memory map. */
     private ArrayList<ByteBuffer> maps = new ArrayList<ByteBuffer>(20);
 
+    private File file;
+
+    private FileChannel fileChannel;
+
 
     /**
      * Constructor.
      *
-     * @param channel   file's file channel object
+     * @param file   file's file channel object
      * @param order byte order of the data
      * @throws java.io.IOException   if could not map file
      */
-    public SimpleMappedMemoryHandler(FileChannel channel, ByteOrder order)
+    public SimpleMappedMemoryHandler(File file, ByteOrder order)
             throws IOException {
 
+        this.file  = file;
         this.order = order;
 
-        long remainingSize = fileSize = channel.size();
+        // Map the file to get access to its data
+        // without having to read the whole thing.
+        FileInputStream fileInputStream = new FileInputStream(file);
+        //String path = file.getAbsolutePath();
+        fileChannel = fileInputStream.getChannel();
+        fileSize = fileChannel.size();
+
+System.out.println("FILE SIZE = " + fileSize);
+
+        long remainingSize = fileSize = fileChannel.size();
         if (fileSize < 4) {
             throw new IOException("file too small at " + fileSize + " byes");
         }
@@ -60,7 +76,7 @@ public class SimpleMappedMemoryHandler {
             System.out.println("mmapHandler: remaining size = " + remainingSize +
                                ", map size = " + sz + ", mapCount = " + mapCount);
 
-            memoryMapBuf = channel.map(FileChannel.MapMode.READ_ONLY, offset, sz);
+            memoryMapBuf = fileChannel.map(FileChannel.MapMode.READ_ONLY, offset, sz);
             memoryMapBuf.order(order);
 
             // Store the map
@@ -70,6 +86,9 @@ public class SimpleMappedMemoryHandler {
             remainingSize -= sz;
             mapCount++;
         }
+
+        // This object is no longer needed since we have the map, so close it
+ //       fileChannel.close();
     }
 
 
@@ -86,6 +105,19 @@ public class SimpleMappedMemoryHandler {
         maps.add(buf);
     }
 
+    public void close() {
+        try {
+            fileChannel.close();
+        }
+        catch (IOException e) {
+        }
+    }
+
+    public ByteOrder getOrder() { return order; }
+
+    public FileChannel getFileChannel() { return fileChannel; }
+
+    public File getFile() { return file; }
 
     public long getFileSize() {
         return fileSize;
