@@ -38,9 +38,7 @@ public class EvioScanner {
     // Reference needed in order to update progress bar when searching for errors
     private FileFrameBig.ErrorTask errorTask;
 
-    public ArrayList<BlockNode> getBlockErrorNodes() {
-        return blockErrorNodes;
-    }
+    public ArrayList<BlockNode> getBlockErrorNodes() { return blockErrorNodes; }
 
     public ArrayList<EvioNode> getEventErrorNodes() {
         return eventErrorNodes;
@@ -59,8 +57,11 @@ public class EvioScanner {
 
 
     final class BlockNode {
+
         /** Block's length value (32-bit words). */
         int len;
+        /** Block's header length value (32-bit words). */
+        int headerLen;
         /** Number of events in block. */
         int count;
         /** Position of block in buffer.  */
@@ -72,15 +73,42 @@ public class EvioScanner {
          * Useful for appending banks to EvioEvent object.
          */
         int place;
+
+        int infoWord;
+        int version=4;
+        boolean hasDictionary;
+        boolean isLast;
         
-        String error;        
+        String error;
+
+        void setInfoWord(int infoWord) {
+            this.infoWord = infoWord;
+            version       = infoWord & 0xff;
+            isLast        = BlockHeaderV4.isLastBlock(infoWord);
+            hasDictionary = BlockHeaderV4.hasDictionary(infoWord);
+        }
+
+        /**
+         * Set members given an array containing the block header values.
+         * @param blockInts array containing the block header values in proper order.
+         */
+        void setData(int[] blockInts) {
+            len           = blockInts[0];
+            place         = blockInts[1];
+            headerLen     = blockInts[2];
+            eventCount    = blockInts[3];
+            infoWord      = blockInts[5];
+            version       = infoWord & 0xff;
+            isLast        = BlockHeaderV4.isLastBlock(infoWord);
+            hasDictionary = BlockHeaderV4.hasDictionary(infoWord);
+        }
     }
 
 
     /**
      * Abbreviated form of org.jlab.code.jevio.EvioNode class.
      */
-    final class EvioNode implements Cloneable {
+    static final class EvioNode implements Cloneable {
 
         /** Header's length value (32-bit words). */
         int len;
@@ -88,6 +116,12 @@ public class EvioScanner {
         int pos;
         /** This node's (evio container's) type. Must be bank, segment, or tag segment. */
         int type;
+        /** Tag. */
+        int tag;
+        /** Num if Bank or Segment. */
+        int num;
+        /** Padding if type is 8 or 16 bit int. */
+        int pad;
 
         /** Length of node's data in 32-bit words. */
         int dataLen;
@@ -122,6 +156,23 @@ public class EvioScanner {
         // Constructors (package accessible)
         //----------------------------------
 
+
+        /**
+         * Constructor which creates an EvioNode associated with
+         * an event (top level).
+         *
+         * @param headerWord1  event's first header word
+         * @param headerWord1  event's second header word
+         */
+        EvioNode(int headerWord1, int headerWord2) {
+            len  = headerWord1;
+            tag  = headerWord2 >> 16 & 0xffff;
+            num  = headerWord2 & 0xff;
+            pad  = headerWord2 >> 14 & 0x3;
+            dataType = headerWord2 >> 8 & 0x3f;
+            // Assume we're hopping from bank to bank
+            type = DataType.BANK.getValue();
+        }
 
         /**
          * Constructor which creates an EvioNode associated with
@@ -160,8 +211,22 @@ public class EvioScanner {
         }
 
         //-------------------------------
-        // Getters
+        // Getters  &  Setters
         //-------------------------------
+
+//        /**
+//         * Set data from 2 bank header words.
+//         *
+//         * @param headerWord1  event's first header word
+//         * @param headerWord1  event's second header word
+//         */
+//        public void setData(int headerWord1, int headerWord2) {
+//            len  = headerWord1;
+//            tag  = headerWord2 >> 16 & 0xffff;
+//            num  = headerWord2 & 0xff;
+//            pad  = headerWord2 >> 14 & 0x3;
+//            type = headerWord2 >> 8 & 0x3f;
+//        }
 
         public long getFilePosition() {
             return offset + pos;
@@ -240,7 +305,7 @@ public class EvioScanner {
                                            int position, int place, int bytesLeft,
                                            long fileOffset) {
 
-        int pad, dataType;
+        int pad, tag, num, dataType;
 
         // Store evio event info, without de-serializing, into EvioNode object
         EvioNode node = new EvioNode(position, place, fileOffset, buffer);
@@ -266,10 +331,10 @@ System.out.println("Error1: " + node.error);
 
         // Read second header word
         if (buffer.order() == ByteOrder.BIG_ENDIAN) {
-            // skip tag
+            tag = buffer.getShort(position) & 0xffff;
             position += 2;
 
-            int dt = buffer.get(position) & 0xff;
+            int dt = buffer.get(position++) & 0xff;
             dataType = dt & 0x3f;
             pad = dt >>> 6;
             // If only 7th bit set, that can only be the legacy tagsegment type
@@ -278,23 +343,29 @@ System.out.println("Error1: " + node.error);
                 dataType = DataType.TAGSEGMENT.getValue();
                 pad = 0;
             }
+
+            num = buffer.get(position) & 0xff;
         }
         else {
-            // skip num
-            position++;
+            num = buffer.get(position++) & 0xff;
 
-            int dt = buffer.get(position) & 0xff;
+            int dt = buffer.get(position++) & 0xff;
             dataType = dt & 0x3f;
             pad = dt >>> 6;
             if (dt == 0x40) {
                 dataType = DataType.TAGSEGMENT.getValue();
                 pad = 0;
             }
+            tag = buffer.getShort(position) & 0xffff;
         }
 
         // Test value of dataType
         DataType dataTypeObj = DataType.getDataType(dataType);
         node.dataType = dataType;
+        node.pad = pad;
+        node.tag = tag;
+        node.num = num;
+
         // If type or pad is a bad value, error
         if (dataTypeObj == null || (pad > 0 && !dataTypeHasPadding(dataTypeObj))) {
             // Return error condition
@@ -353,7 +424,7 @@ System.out.println("Error2: " + node.error);
         EvioNode returnedNode;
         DataType dataTypeObj;
         int totalKidWords = 0;
-        int dt, dataType, dataLen, len, pad;
+        int dt, dataType, dataLen, len, pad, tag, num;
 
         // Do something different depending on what node contains
         switch (type) {
@@ -376,7 +447,7 @@ System.out.println("Error2: " + node.error);
 
                     // Read & parse second header word
                     if (buffer.order() == ByteOrder.BIG_ENDIAN) {
-                        // skip tag
+                        tag = buffer.getShort(position) & 0xffff;
                         position += 2;
 
                         dt = buffer.get(position++) & 0xff;
@@ -388,12 +459,10 @@ System.out.println("Error2: " + node.error);
                             dataType = DataType.TAGSEGMENT.getValue();
                             pad = 0;
                         }
-                        // skip num
-                        position++;
+                        num = buffer.get(position++) & 0xff;
                     }
                     else {
-                        // skip num
-                        position++;
+                        num = buffer.get(position++) & 0xff;
 
                         dt = buffer.get(position++) & 0xff;
                         dataType = dt & 0x3f;
@@ -403,7 +472,7 @@ System.out.println("Error2: " + node.error);
                             pad = 0;
                         }
 
-                        // skip tag
+                        tag = buffer.getShort(position) & 0xffff;
                         position += 2;
                     }
 
@@ -416,6 +485,8 @@ System.out.println("Error2: " + node.error);
 
                     kidNode.len  = len;
                     kidNode.pos  = position - 8;
+                    kidNode.tag  = tag;
+                    kidNode.num  = num;
                     kidNode.type = DataType.BANK.getValue();  // This is a bank
 
                     kidNode.dataLen  = dataLen;
@@ -468,9 +539,8 @@ System.out.println("Error 1: " + kidNode.error);
                 while (position < endingPos - 4) {
 
                     if (buffer.order() == ByteOrder.BIG_ENDIAN) {
-                        // skip tag
-                        position++;
-                        dt = buffer.get(position++) & 0xff;
+                        tag = buffer.get(position++) & 0xff;
+                        dt  = buffer.get(position++) & 0xff;
                         dataType = dt & 0x3f;
                         pad = dt >>> 6;
                         if (dt == 0x40) {
@@ -490,8 +560,7 @@ System.out.println("Error 1: " + kidNode.error);
                             dataType = DataType.TAGSEGMENT.getValue();
                             pad = 0;
                         }
-                        // skip tag
-                        position++;
+                        tag = buffer.get(position++) & 0xff;
                     }
 
                     // Total length in words of this seg (including header)
@@ -501,6 +570,7 @@ System.out.println("Error 1: " + kidNode.error);
 
                     kidNode.len  = len;
                     kidNode.pos  = position - 4;
+                    kidNode.tag  = tag;
                     kidNode.type = DataType.SEGMENT.getValue();  // This is a segment
 
                     kidNode.dataLen  = len;
@@ -550,6 +620,7 @@ System.out.println("Error 2: " + kidNode.error);
                     if (buffer.order() == ByteOrder.BIG_ENDIAN) {
                         int temp = buffer.getShort(position) & 0xffff;
                         position += 2;
+                        tag = temp >>> 4;
                         dataType = temp & 0xf;
                         len = buffer.getShort(position) & 0xffff;
                         position += 2;
@@ -559,6 +630,7 @@ System.out.println("Error 2: " + kidNode.error);
                         position += 2;
                         int temp = buffer.getShort(position) & 0xffff;
                         position += 2;
+                        tag = temp >>> 4;
                         dataType = temp & 0xf;
                     }
 
@@ -569,6 +641,7 @@ System.out.println("Error 2: " + kidNode.error);
 
                     kidNode.len  = len;
                     kidNode.pos  = position - 4;
+                    kidNode.tag  = tag;
                     kidNode.type = DataType.TAGSEGMENT.getValue();  // This is a tag segment
 
                     kidNode.dataLen  = len;
@@ -626,13 +699,13 @@ System.out.println("Error 4: " + node.error);
      */
     public boolean scanFileForErrors() throws IOException, EvioException {
 
-        int      bufPos, byteInfo, byteLen, magicNum, lengthOfEventsInBlock;
-        int      blockHdrWordSize, blockWordSize, blockEventCount;
+        int      bufPos, bufPosInBlock, byteInfo, byteLen, magicNum, lengthOfEventsInBlock;
+        int      blockNum, blockHdrWordSize, blockWordSize, blockEventCount;
         int      mapByteSize, mapBytesLeft;
-        boolean  firstBlock=true, foundError=false;
+        boolean  firstBlock=true, foundError=false, goToNextBlock;
         ByteBuffer memoryMapBuf;
-        BlockNode blockNode = null;
-        EvioNode node;
+        BlockNode blockNode;
+        EvioNode node=null;
 
         // Keep track of the # of blocks & events in file
         blockCount = 0;
@@ -665,7 +738,7 @@ System.out.println("Error 4: " + node.error);
                 // Update progress
                 if (errorTask != null) {
                     int progressPercent = (int) (100*(fileByteSize - fileBytesLeft)/(fileByteSize));
-System.out.println("progress = " + progressPercent);
+//System.out.println("progress = " + progressPercent);
                     errorTask.setTaskProgress(progressPercent);
                 }
 
@@ -694,6 +767,7 @@ System.out.println("progress = " + progressPercent);
 
                     // Read in block header info, swapping is taken care of
                     blockWordSize    = memoryMapBuf.getInt(bufPos);
+                    blockNum         = memoryMapBuf.getInt(bufPos + 4*BlockHeaderV4.EV_BLOCKNUM);
                     byteInfo         = memoryMapBuf.getInt(bufPos + 4*BlockHeaderV4.EV_VERSION);
                     blockHdrWordSize = memoryMapBuf.getInt(bufPos + 4*BlockHeaderV4.EV_HEADERSIZE);
                     blockEventCount  = memoryMapBuf.getInt(bufPos + 4*BlockHeaderV4.EV_COUNT);
@@ -705,13 +779,17 @@ System.out.println("progress = " + progressPercent);
 //                                           ", byteInfo  = " + byteInfo);
 
                     // Positioned before block header so get its info
-                    blockNode         = new BlockNode();
-                    blockNode.pos     = bufPos;
-                    blockNode.filePos = fileOffset + bufPos;
-                    blockNode.len     = blockWordSize;
-                    blockNode.count   = blockEventCount;
-                    blockNode.place   = blockCount++;
+                    blockNode           = new BlockNode();
+                    blockNode.pos       = bufPos;
+                    blockNode.filePos   = fileOffset + bufPos;
+                    blockNode.len       = blockWordSize;
+                    blockNode.headerLen = blockHdrWordSize;
+                    blockNode.count     = blockEventCount;
+                    blockNode.place     = blockNum;
+                    blockNode.setInfoWord(byteInfo);
+                    blockCount++;
 
+                    goToNextBlock = false;
                     lengthOfEventsInBlock = 0;
 
                     // If magic # is not right, file is not in proper format
@@ -741,11 +819,11 @@ System.out.println("scanFile: fatal error = " + blockNode.error);
 //                curLastBlock    = BlockHeaderV4.isLastBlock(byteInfo);
 
                     // Hop over block header to events
-                    bufPos        += 4*blockHdrWordSize;
+                    bufPosInBlock  = bufPos += 4*blockHdrWordSize;
                     mapBytesLeft  -= 4*blockHdrWordSize;
                     fileBytesLeft -= 4*blockHdrWordSize;
 
-//System.out.println("    hopped blk hdr, pos = " + bufPos);
+//System.out.println("    hopped blk hdr, pos = " + bufPosInBlock);
 
                     // Check for a dictionary - the first event in the first block.
                     // It's not included in the header block count, but we must take
@@ -754,70 +832,96 @@ System.out.println("scanFile: fatal error = " + blockNode.error);
                         firstBlock = false;
 
                         // Get its length - bank's len does not include itself
-                        byteLen = 4*(memoryMapBuf.getInt(bufPos) + 1);
+                        byteLen = 4*(memoryMapBuf.getInt(bufPosInBlock) + 1);
 
                         // Skip over dictionary
-                        bufPos        += byteLen;
-                        mapBytesLeft  -= byteLen;
-                        fileBytesLeft -= byteLen;
+                        bufPosInBlock += byteLen;
+//                        mapBytesLeft  -= byteLen;
+//                        fileBytesLeft -= byteLen;
                         lengthOfEventsInBlock += byteLen;
-//System.out.println("    hopped dict, pos = " + bufPos);
+//System.out.println("    hopped dict, pos = " + bufPosInBlock);
                     }
 
                     // For each event in block, store its location
                     for (int i=0; i < blockEventCount; i++) {
                         // Sanity check - must have at least 1 header's amount left
-                        if (mapBytesLeft < 8) {
+                        if (mapBytesLeft - lengthOfEventsInBlock < 8) {
                             blockNode.error = "Not enough data to read event (bad bank len?)";
                             blockErrorNode = blockNode;
                             blockErrorNodes.add(blockNode);
+                            // We're done with this block
+                            foundError = true;
+                            goToNextBlock = true;
+                            eventCount -= blockEventCount;
 System.out.println("scanFile: fatal error = " + blockNode.error);
-                            return true;
+                            break;
                         }
 
-                        // Only returns node containing evio error, else null if OK
-                        node = searchForErrorInEvent(memoryMapBuf, bufPos,
-                                                     eventCount + i, mapBytesLeft, fileOffset);
+                        try {
+                            // Only returns node containing evio error, else null if OK
+                            node = searchForErrorInEvent(memoryMapBuf, bufPosInBlock,
+                                                         eventCount + i,
+                                                         mapBytesLeft - lengthOfEventsInBlock,
+                                                         fileOffset);
+                        }
+                        catch (Exception e) {
+                            // Any error is here is probably due to a bad bank length
+                            // causing an IndexOutOfBoundException.
+                            foundError = true;
+                            goToNextBlock = true;
+                            blockNode.error = e.getMessage() + " (bad bank len?)";
+                            blockErrorNode = blockNode;
+                            blockErrorNodes.add(blockNode);
+                        }
+
                         // If there's been an error detected in this event ...
                         if (node != null) {
                             // Try to salvage things by skipping this block and going to next
-System.out.println("Error in event #" + (eventCount + i));
-System.out.println("Skip the rest of block #" + blockCount);
+                            node.place = eventCount + i;
                             eventErrorNodes.add(node);
                             blockErrorNodes.add(blockNode);
-                            // We're done with this block
-                            mapBytesLeft = 0;
                             // This will compensate for the line below
                             eventCount -= blockEventCount;
                             foundError = true;
+                            // We're done with this block
+                            goToNextBlock = true;
+System.out.println("scanfile: error in event #" + (eventCount + i));
+                            break;
+                        }
+                        else if (goToNextBlock) {
+                            // This handles any exception caught just above
+                            eventCount -= blockEventCount;
                             break;
                         }
 
                         // Hop over header + data
-                        byteLen = 4*(memoryMapBuf.getInt(bufPos) + 1);
+                        byteLen = 4*(memoryMapBuf.getInt(bufPosInBlock) + 1);
 
-                        bufPos        += byteLen;
-                        mapBytesLeft  -= byteLen;
-                        fileBytesLeft -= byteLen;
+                        bufPosInBlock += byteLen;
+//                        mapBytesLeft  -= byteLen;
+//                        fileBytesLeft -= byteLen;
                         lengthOfEventsInBlock += byteLen;
 
-//System.out.println("    Hopped event " + (i+eventCount) + ", file bytes left = " + fileBytesLeft +
-//                   ", file offset = " + fileOffset + "\n");
+//System.out.println("    Hopped event " + (i+eventCount) + ", file offset = " + fileOffset + "\n");
                     }
 
-                    if (lengthOfEventsInBlock != 4*(blockNode.len - blockHdrWordSize)) {
+                    // If the length of events taken from the block header is not the same
+                    // as the length of all the events in the block added up, there's a problem.
+                    if (!goToNextBlock && (lengthOfEventsInBlock != 4*(blockNode.len - blockHdrWordSize))) {
                         blockNode.error = "Byte len of events in block (" + lengthOfEventsInBlock +
                                           ") doesn't match block header (" +
                                            4*(blockNode.len - blockHdrWordSize) + ")";
-//                        blockNode.error = "Byte len of events in block\n(" + lengthOfEventsInBlock +
-//                                          " doesn't match block header\n(" +
-//                                           4*(blockNode.len - blockHdrWordSize) + ")";
                         blockErrorNode = blockNode;
                         blockErrorNodes.add(blockNode);
-                        foundError = true;
 System.out.println("scanFile: try again error = " + blockNode.error);
-                        // Try skipping this block and going to next
                     }
+
+                    // If there is a difference, assume that the block length is good and
+                    // the problems is with events' lengths. Then try to continue on.
+                    lengthOfEventsInBlock = 4*(blockNode.len - blockHdrWordSize);
+                    bufPos        += lengthOfEventsInBlock;
+                    mapBytesLeft  -= lengthOfEventsInBlock;
+                    fileBytesLeft -= lengthOfEventsInBlock;
 
                     eventCount += blockEventCount;
 
@@ -843,6 +947,7 @@ System.out.println("scanFile: try again error = " + blockNode.error);
                     blockNode.error = "Block len too large (not enough data)";
                     blockErrorNode = blockNode;
                     blockErrorNodes.add(blockNode);
+System.out.println("scanFile: not enough data for block len");
                     return true;
                 }
                 // or not enough data to read next block header (32 bytes)
@@ -850,6 +955,7 @@ System.out.println("scanFile: try again error = " + blockNode.error);
                     blockNode.error = "Extra " + fileBytesLeft + " bytes at file end";
                     blockErrorNode = blockNode;
                     blockErrorNodes.add(blockNode);
+System.out.println("scanFile: data left at file end");
                     return true;
                 }
 

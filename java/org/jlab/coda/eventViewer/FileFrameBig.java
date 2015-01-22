@@ -1,6 +1,9 @@
 package org.jlab.coda.eventViewer;
 
 
+import org.jlab.coda.jevio.BlockHeaderV4;
+import org.jlab.coda.jevio.DataType;
+
 import javax.swing.*;
 import javax.swing.UIManager.LookAndFeelInfo;
 import javax.swing.border.*;
@@ -363,12 +366,18 @@ System.out.println("Jump to BOTTOM of prev map");
     /**
      * Jump up or down to the row containing a cell with value = findValue.
      * It moves so that a full row is exactly at the top.
+     *
      * @param down {@code true}  if going to end of file,
      *             {@code false} if going to top of file
      * @param findValue value of word to find
-     * @param comments comments to add to found value's row
+     * @param getBlock  return the 7 words prior to & also the found value (8 words total).
+     *                  Used when finding block headers.
+     * @param comments  comments to add to found value's row
+     * @param task      object used to update progress of search
+     *
+     * @return previous 7 ints of found value if getPrevData arg is {@code true}
      */
-    private void scrollToAndHighlight(boolean down, long findValue,
+    private int[] scrollToAndHighlight(boolean down, long findValue, boolean getBlock,
                                       String comments, SearchTask task) {
         JViewport viewport = tablePane.getViewport();
 
@@ -390,9 +399,9 @@ System.out.println("Jump to BOTTOM of prev map");
         long val;
         Rectangle rec = null;
         int row, startingCol=1, finalY, rowY, viewY;
-        boolean atTop = viewPoint.y == 0;
-        boolean atBottom = atEnd(viewport);
         boolean foundValue = false;
+
+        int[] blockData = null;
 
         // Map index starts at 0
         int maxMapIndex = dataTableModel.getMapCount() - 1;
@@ -436,7 +445,7 @@ System.out.println("Jump to BOTTOM of prev map");
                         startingCol = lastSearchedCol + 1;
                     }
                 }
-System.out.println("\nStart looking at row = " + row + ", col = " + startingCol);
+//System.out.println("\nStart looking at row = " + row + ", col = " + startingCol);
 
                 while (row < rowCount) {
 
@@ -455,8 +464,34 @@ System.out.println("\nStart looking at row = " + row + ", col = " + startingCol)
                         lastSearchedCol = col;
 
                         // If we found a match in a table's element ...
-                        if (val == findValue)  {
-System.out.println("    Found at row = " + row + ", col = " + col);
+                        if (val == findValue) {
+
+                            // If we're looking for a block header ...
+                            if (getBlock) {
+                                long index = dataTableModel.getWordIndexOf(row,col);
+                                // If we're not too close to the beginning ...
+                                if (index > 6) {
+                                    blockData = new int[8];
+                                    for (int i=0; i<8; i++) {
+                                        blockData[7-i] = (int)dataTableModel.getLongValueAt(index - i);
+                                    }
+                                    // We already found the magic # in blockData[7].
+                                    // Check other values to see if they make sense,
+                                    // (7th word is 0, lowest 8 bytes of 6th word is version (4).
+                                    if (blockData[6] != 0 || (blockData[5] & 0xf) != 4) {
+                                        foundValue = false;
+                                        continue;
+                                    }
+//for (int i=0; i<8; i++) {
+//    System.out.println("Block[" + i + "] = " + blockData[i]);
+//}
+                                }
+                                else {
+                                    continue;
+                                }
+                            }
+
+//System.out.println("    Found at row = " + row + ", col = " + col);
                             dataTableModel.highListCell(row, col);
 
                             // Mark it in comments
@@ -526,7 +561,7 @@ System.out.println("    Found at row = " + row + ", col = " + col);
                         startingCol = lastSearchedCol - 1;
                     }
                 }
-System.out.println("\nStart looking at row = " + row + ", col = " + startingCol);
+//System.out.println("\nStart looking at row = " + row + ", col = " + startingCol);
 
                 while (row >= 0) {
 
@@ -546,7 +581,33 @@ System.out.println("\nStart looking at row = " + row + ", col = " + startingCol)
 
                         // If we found a match in a table's element ...
                         if (val == findValue)  {
-System.out.println("    Found at row = " + row + ", col = " + col);
+
+                            // If we're looking for a block header ...
+                            if (getBlock) {
+                                long index = dataTableModel.getWordIndexOf(row,col);
+                                // If we're not too close to the beginning ...
+                                if (index > 6) {
+                                    blockData = new int[8];
+                                    for (int i=0; i<8; i++) {
+                                        blockData[7-i] = (int)dataTableModel.getLongValueAt(index - i);
+                                    }
+                                    // We already found the magic # in blockData[7].
+                                    // Check other values to see if they make sense,
+                                    // (7th word is 0, lowest 8 bytes of 6th word is version (4).
+                                    if (blockData[6] != 0 || (blockData[5] & 0xf) != 4) {
+                                        foundValue = false;
+                                        continue;
+                                    }
+//for (int i=0; i<8; i++) {
+//    System.out.println("Block[" + i + "] = " + blockData[i]);
+//}
+                                }
+                                else {
+                                    continue;
+                                }
+                            }
+
+//System.out.println("    Found at row = " + row + ", col = " + col);
                             dataTableModel.highListCell(row, col);
 
                             // Mark it in comments
@@ -593,8 +654,8 @@ System.out.println("    Found at row = " + row + ", col = " + col);
             // If we're here, we did NOT find any value
 
             if (down) {
-System.out.println("Did NOT find val, at bottom = " + atBottom +
-                   ", stopSearch = " + stopSearch);
+//System.out.println("Did NOT find val, at bottom = " + atBottom +
+//                   ", stopSearch = " + stopSearch);
                 // See if there are more data (maps) to follow.
                 // If so, go to the next map and search there.
                 if (!dataTableModel.nextMap()) {
@@ -612,8 +673,8 @@ System.out.println("Did NOT find val, at bottom = " + atBottom +
                     else {
                         progressPercent = 100*(currentMapIndex - startingMapIndex)/(maxMapIndex - startingMapIndex);
                     }
-System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex +
-                   ", max = " + maxMapIndex + ", prog = " + progressPercent);
+//System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex +
+//                   ", max = " + maxMapIndex + ", prog = " + progressPercent);
                     task.setTaskProgress(progressPercent);
                 }
 
@@ -622,7 +683,7 @@ System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex 
                 lastSearchedCol = 0;
             }
             else {
-System.out.println("Did NOT find val, at top = " + atTop);
+//System.out.println("Did NOT find val, at top = " + atTop);
                 // See if there are more data (maps) before.
                 // If so, go to the previous map and search there.
                 if (!dataTableModel.previousMap()) {
@@ -640,8 +701,8 @@ System.out.println("Did NOT find val, at top = " + atTop);
                     else {
                         progressPercent = 100*(startingMapIndex - currentMapIndex)/startingMapIndex;
                     }
-System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex +
-                   ", max = " + maxMapIndex + ", prog = " + progressPercent);
+//System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex +
+//                   ", max = " + maxMapIndex + ", prog = " + progressPercent);
                     task.setTaskProgress(progressPercent);
                 }
 
@@ -671,7 +732,7 @@ System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex 
             dataTable.setColumnSelectionInterval(lastFoundCol, lastFoundCol);
 
             searchDone = true;
-            return;
+            return blockData;
         }
 
         if (rec != null) {
@@ -684,27 +745,35 @@ System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex 
         }
 
         searchDone = true;
+        return blockData;
     }
 
 
 
     /** A SwingWorker thread to handle a possibly lengthy search for a value. */
     class SearchTask extends SwingWorker<Void, Void> {
+
         private final boolean down;
+        private final boolean findBlock;
         private final long value;
         private String label;
+        private int[] blockData;
 
-        public SearchTask(boolean down, long value, String label) {
+        public SearchTask(boolean down, boolean findBlock, long value, String label) {
             this.down = down;
+            this.findBlock = findBlock;
             this.value = value;
             this.label = label;
         }
+
+        // If looking for a block header, here's the data in it. May be null.
+        public int[] getBlockData() {return blockData;}
 
         // Main search task executed in background thread
         @Override
         public Void doInBackground() {
             setControlsForSearch();
-            scrollToAndHighlight(down, value, label, this);
+            blockData = scrollToAndHighlight(down, value, findBlock, label, this);
             return null;
         }
 
@@ -720,6 +789,14 @@ System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex 
             progressBar.setString("Done");
             progressBar.setValue(0);
             setSliderPosition();
+
+            if (findBlock) {
+                if (blockInfoPanel == null) {
+System.out.println("Search task: call add panel");
+                    addBlockInfoPanel();
+                }
+                updateBlockInfoPanel(blockData);
+            }
 
             Toolkit.getDefaultToolkit().beep();
             enableControls();
@@ -764,6 +841,9 @@ System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex 
     }
 
 
+    private SearchTask task;
+
+
     private void handleWordValueSearch(final boolean down, boolean findBlock) {
         setMessage(" ", null);
         long l = 0xc0da0100L;
@@ -795,7 +875,7 @@ System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex 
         }
 
         // Use swing worker thread to do time-consuming search in the background
-        SearchTask task = new SearchTask(down, ll, label);
+        task = new SearchTask(down, findBlock, ll, label);
         task.addPropertyChangeListener(this);
         task.execute();
     }
@@ -820,11 +900,14 @@ System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex 
      * Will search from selected row & col. If no selection,
      * search from beginning row & col (this may not be good
      * if not in first memory map).
+     *
+     * @return array with event header info
      */
-    private void handleEventSearch() {
+    private EvioScanner.EvioNode handleEventSearch() {
         setMessage(" ", null);
 
         int[] mapRowCol;
+        EvioScanner.EvioNode node = null;
         long val, wordIndex;
 
         // Where are we now?
@@ -861,7 +944,9 @@ System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex 
                 wordIndex += 8;
                 // Put new cell in view & select
                 scrollToIndex(wordIndex);
-                return;
+                node = new EvioScanner.EvioNode((int)(dataTableModel.getLongValueAt(wordIndex)),
+                                                (int)(dataTableModel.getLongValueAt(wordIndex + 1)));
+                return node;
             }
             //---------------------------------------------------------------
         }
@@ -887,7 +972,7 @@ System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex 
             JOptionPane.showMessageDialog(this, "Entry exceeded file size", "Return",
                                           JOptionPane.INFORMATION_MESSAGE);
 
-            return;
+            return node;
         }
 
         // First make sure we getting our data from the
@@ -910,6 +995,9 @@ System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex 
         // Put new cell in view & select
         scrollToIndex(wordIndex);
         searchDone = true;
+        node = new EvioScanner.EvioNode((int)(dataTableModel.getLongValueAt(wordIndex)),
+                                        (int)(dataTableModel.getLongValueAt(wordIndex + 1)));
+        return node;
     }
 
 
@@ -1029,6 +1117,218 @@ System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex 
         viewPosition.setValue((int)(1000L*midRow/dataTableModel.getTotalRows()));
     }
 
+    JPanel eventInfoPanel;
+
+
+    private void updateEventInfoPanel(EvioScanner.EvioNode node) {
+        if (node == null || eventInfoPanel == null) return;
+
+        ((JLabel)(eventInfoPanel.getComponent(1))).setText("" + ((long)node.len & 0xffffffffL));
+        ((JLabel)(eventInfoPanel.getComponent(3))).setText("0x" + Integer.toHexString(node.tag));
+        ((JLabel)(eventInfoPanel.getComponent(5))).setText("" + node.num);
+
+        // Catch bad types
+        String type;
+        DataType nodeType = node.getTypeObj();
+        if (nodeType == null) {
+            type = "bad (" + node.type + ")";
+        }
+        else {
+            type = "" + nodeType;
+        }
+
+        ((JLabel)(eventInfoPanel.getComponent(7))).setText("" + type);
+
+        // Catch bad data types
+        String dtype;
+        DataType dataType = node.getDataTypeObj();
+        if (dataType == null) {
+            dtype = "bad (" + node.dataType + ")";
+        }
+        else {
+            dtype = "" + dataType;
+        }
+
+        ((JLabel)(eventInfoPanel.getComponent(9))).setText("" + dtype);
+
+
+        ((JLabel)(eventInfoPanel.getComponent(11))).setText("" + node.pad);
+    }
+
+    private void removeEventInfoPanel() {
+        if (eventInfoPanel == null) {
+            return;
+        }
+
+        Component[] comps = controlPanel.getComponents();
+        for (int i=0; i < comps.length; i++) {
+            if (comps[i] == eventInfoPanel) {
+                 // Need to remove both the block info panel
+                controlPanel.remove(i);
+                // and the vertical strut before it
+                controlPanel.remove(i-1);
+            }
+        }
+
+        controlPanel.revalidate();
+        controlPanel.repaint();
+        eventInfoPanel = null;
+    }
+
+    private void addEventInfoPanel() {
+        if (eventInfoPanel != null) {
+            return;
+        }
+
+        Border blkLineBorder = BorderFactory.createLineBorder(Color.black);
+        Border lineBorder = BorderFactory.createLineBorder(Color.blue);
+        Border compound = BorderFactory.createCompoundBorder(lineBorder, null);
+        compound = BorderFactory.createTitledBorder(
+                          compound, "Event Info",
+                          TitledBorder.CENTER,
+                          TitledBorder.TOP, null, Color.blue);
+
+
+        eventInfoPanel = new JPanel();
+        eventInfoPanel.setLayout(new GridLayout(6,2,5,2));
+        eventInfoPanel.setBorder(compound);
+
+        JLabel[] labels = new JLabel[12];
+        labels[0]  = new JLabel("Length");
+        labels[2]  = new JLabel("Tag");
+        labels[4]  = new JLabel("Num");
+        labels[6]  = new JLabel("Type");
+        labels[8]  = new JLabel("Data type");
+        labels[10] = new JLabel("Padding");
+
+        labels[1]  = new JLabel("");
+        labels[3]  = new JLabel("");
+        labels[5]  = new JLabel("");
+        labels[7]  = new JLabel("");
+        labels[9]  = new JLabel("");
+        labels[11]  = new JLabel("");
+
+        for (int i=0; i < 12; i++) {
+            labels[i].setOpaque(true);
+            if (i%2 == 1) {
+                labels[i].setBackground(Color.white);
+                labels[i].setForeground(darkGreen);
+                labels[i].setBorder(blkLineBorder);
+            }
+
+            eventInfoPanel.add(labels[i]);
+        }
+
+        // Add to control panel
+        controlPanel.add(Box.createVerticalStrut(10));
+        controlPanel.add(eventInfoPanel);
+        controlPanel.revalidate();
+        controlPanel.repaint();
+    }
+
+
+
+    JPanel blockInfoPanel;
+
+    private void updateBlockInfoPanel(int[] blockData) {
+        if (blockData == null ||blockInfoPanel == null ) return;
+
+        ((JLabel)(blockInfoPanel.getComponent(1))).setText("" + blockData[0]);
+        ((JLabel)(blockInfoPanel.getComponent(3))).setText("" + blockData[2]);
+        ((JLabel)(blockInfoPanel.getComponent(5))).setText("" + blockData[1]);
+        ((JLabel)(blockInfoPanel.getComponent(7))).setText("" + blockData[3]);
+        ((JLabel)(blockInfoPanel.getComponent(9))).setText("" + (blockData[5] & 0xff));
+        ((JLabel)(blockInfoPanel.getComponent(11))).setText("" + BlockHeaderV4.hasDictionary(blockData[5]));
+        ((JLabel)(blockInfoPanel.getComponent(13))).setText(""+ BlockHeaderV4.isLastBlock(blockData[5]));
+    }
+
+    private void updateBlockInfoPanel(EvioScanner.BlockNode node) {
+        if (node == null || blockInfoPanel == null) return;
+
+        ((JLabel)(blockInfoPanel.getComponent(1))).setText(""  + node.len);
+        ((JLabel)(blockInfoPanel.getComponent(3))).setText(""  + node.headerLen);
+        ((JLabel)(blockInfoPanel.getComponent(5))).setText(""  + node.place);
+        ((JLabel)(blockInfoPanel.getComponent(7))).setText(""  + node.count);
+        ((JLabel)(blockInfoPanel.getComponent(9))).setText(""  + node.version);
+        ((JLabel)(blockInfoPanel.getComponent(11))).setText("" + node.hasDictionary);
+        ((JLabel)(blockInfoPanel.getComponent(13))).setText("" + node.isLast);
+    }
+
+    private void removeBlockInfoPanel() {
+        if (blockInfoPanel == null) {
+            return;
+        }
+
+        Component[] comps = controlPanel.getComponents();
+        for (int i=0; i < comps.length; i++) {
+            if (comps[i] == blockInfoPanel) {
+                 // Need to remove both the block info panel
+                controlPanel.remove(i);
+                // and the vertical strut before it
+                controlPanel.remove(i-1);
+            }
+        }
+
+        controlPanel.revalidate();
+        controlPanel.repaint();
+        blockInfoPanel = null;
+    }
+
+    private void addBlockInfoPanel() {
+        if (blockInfoPanel != null) {
+            return;
+        }
+
+        Border blkLineBorder = BorderFactory.createLineBorder(Color.black);
+        Border lineBorder = BorderFactory.createLineBorder(Color.blue);
+        Border compound = BorderFactory.createCompoundBorder(lineBorder, null);
+        compound = BorderFactory.createTitledBorder(
+                          compound, "Block Info",
+                          TitledBorder.CENTER,
+                          TitledBorder.TOP, null, Color.blue);
+
+
+        blockInfoPanel = new JPanel();
+        blockInfoPanel.setLayout(new GridLayout(7,2,5,2));
+        blockInfoPanel.setBorder(compound);
+
+        JLabel[] labels = new JLabel[14];
+        labels[0]  = new JLabel("Total words");
+        labels[2]  = new JLabel("Header words");
+        labels[4]  = new JLabel("Id number");
+        labels[6]  = new JLabel("Event count");
+        labels[8]  = new JLabel("Version");
+        labels[10] = new JLabel("Has dictionary");
+        labels[12] = new JLabel("Is last");
+
+        labels[1]  = new JLabel("");
+        labels[3]  = new JLabel("");
+        labels[5]  = new JLabel("");
+        labels[7]  = new JLabel("");
+        labels[9]  = new JLabel("");
+        labels[11] = new JLabel("");
+        labels[13] = new JLabel("");
+
+        for (int i=0; i < 14; i++) {
+            labels[i].setOpaque(true);
+            if (i%2 == 1) {
+                labels[i].setBackground(Color.white);
+                labels[i].setForeground(darkGreen);
+                labels[i].setBorder(blkLineBorder);
+            }
+
+            blockInfoPanel.add(labels[i]);
+        }
+
+        // Add to control panel
+        controlPanel.add(Box.createVerticalStrut(10));
+        controlPanel.add(blockInfoPanel);
+        controlPanel.revalidate();
+        controlPanel.repaint();
+    }
+
+
+
 
 
     /** Add a panel showing evio faults in the data. */
@@ -1042,7 +1342,7 @@ System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex 
             evioFaultScanner = new EvioScanner(mappedMemoryHandler, errorTask);
         }
 
-        //evioFaultsFound = true;
+        evioFaultsFound = true;
 
         try {
             evioFaultScanner.scanFileForErrors();
@@ -1058,6 +1358,7 @@ System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex 
         }
         setMessage("Errors found", Color.red);
 
+        faultRadioGroup = new ButtonGroup();
 
         Border lineBorder = BorderFactory.createLineBorder(Color.blue);
         Border compound = BorderFactory.createCompoundBorder(lineBorder, null);
@@ -1070,9 +1371,13 @@ System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex 
         errorPanel.setBorder(compound);
         errorPanel.setLayout(new BorderLayout(0, 10));
 
-        // Register a listener for the radio buttons to jump to file position
-        ActionListener al_radio = new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
+        MouseListener ml = new MouseListener() {
+            public void mousePressed(MouseEvent e)  {}
+            public void mouseReleased(MouseEvent e) {}
+            public void mouseEntered(MouseEvent e)  {}
+            public void mouseExited(MouseEvent e)   {}
+
+            public void mouseClicked(MouseEvent e) {
                 // Parse the action command
                 String actionCmd = faultRadioGroup.getSelection().getActionCommand();
                 String[] strings = actionCmd.split(":");
@@ -1084,6 +1389,9 @@ System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex 
                     setMessage(node.error, Color.red);
                     scrollToIndex(node.filePos / 4);
                     setSliderPosition();
+                    removeEventInfoPanel();
+                    addBlockInfoPanel();
+                    updateBlockInfoPanel(node);
                 }
                 else {
                     EvioScanner.EvioNode node = evioFaultScanner.getEventErrorNodes().get(index);
@@ -1091,8 +1399,13 @@ System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex 
                     setMessage(node.error, Color.red);
                     scrollToIndex(node.getFilePosition()/4);
                     setSliderPosition();
+                    removeBlockInfoPanel();
+                    addEventInfoPanel();
+                    updateEventInfoPanel(node);
                 }
+
             }
+
         };
 
         ArrayList<EvioScanner.EvioNode>  events = evioFaultScanner.getEventErrorNodes();
@@ -1102,31 +1415,53 @@ System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex 
         int eventCount = events.size();
 
         faultButtons = new JRadioButton[blockCount + eventCount];
-        faultRadioGroup = new ButtonGroup();
 
         JPanel faultPanel = new JPanel();
-        faultPanel.setLayout(new GridLayout(eventCount + blockCount, 1, 10, 5));
+        faultPanel.setLayout(new GridLayout(0, 1, 10, 5));
+
+        // Model for JList below
+        DefaultListModel<JRadioButton> model = new DefaultListModel<JRadioButton>();
 
         for (int i=0; i < blockCount; i++) {
             EvioScanner.BlockNode blockNode = blocks.get(i);
             // Reported number is word position which starts at 1
-            faultButtons[i] = new JRadioButton("Block @ " + (blockNode.filePos/4 + 1));
+            faultButtons[i] = new JRadioButton("Block # " + blockNode.place);
             faultButtons[i].setActionCommand("B:" + i);
-            faultButtons[i].addActionListener(al_radio);
             faultRadioGroup.add(faultButtons[i]);
-            faultPanel.add(faultButtons[i]);
+            // Put button in list
+            model.addElement(faultButtons[i]);
         }
 
         for (int i=blockCount; i < eventCount + blockCount; i++) {
             EvioScanner.EvioNode evNode = events.get(i - blockCount);
-            faultButtons[i] = new JRadioButton("Event @ " + (evNode.getFilePosition()/4 + 1));
+            faultButtons[i] = new JRadioButton("Event #" + evNode.place);
             faultButtons[i].setActionCommand("E:" + (i - blockCount));
-            faultButtons[i].addActionListener(al_radio);
             faultRadioGroup.add(faultButtons[i]);
-            faultPanel.add(faultButtons[i]);
+            model.addElement(faultButtons[i]);
         }
 
-        errorPanel.add(faultPanel, BorderLayout.NORTH);
+        class PanelRenderer implements ListCellRenderer {
+            public Component getListCellRendererComponent(JList list, Object value, int index,
+                                                          boolean isSelected, boolean cellHasFocus) {
+                JRadioButton renderer = (JRadioButton) value;
+                renderer.setSelected(isSelected);
+                if (isSelected) {
+                    renderer.doClick();
+                }
+                return renderer;
+            }
+        }
+
+        // List of JRadioButtons
+        JList list = new JList<JRadioButton>(model);
+        list.setCellRenderer(new PanelRenderer());
+        list.addMouseListener(ml);
+
+        // Put list in scroll pane
+        JScrollPane jsp = new JScrollPane(list);
+
+        // Put scroll pane in panel
+        errorPanel.add(jsp);
 
         // Add to control panel
         controlPanel.add(Box.createVerticalStrut(10));
@@ -1164,8 +1499,8 @@ System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex 
 
         JPanel radioButtonPanel = new JPanel();
         radioButtonPanel.setLayout(new GridLayout(6, 1, 0, 4));
-        radioButtonPanel.setMinimumSize(new Dimension(160, 200));
-        radioButtonPanel.setPreferredSize(new Dimension(160, 200));
+        radioButtonPanel.setMinimumSize(new Dimension(200, 200));
+        radioButtonPanel.setPreferredSize(new Dimension(200, 200));
         radioButtonPanel.setBorder(compound);
 
         // Create the radio buttons
@@ -1226,18 +1561,24 @@ System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex 
                         enableControls();
                         searchButtonNext.setText(" > ");
                         searchStringBox.setEditable(true);
+                        removeEventInfoPanel();
+                        removeBlockInfoPanel();
                         break;
                     case 2:
                         // Word Index
                         setControlsForPositionJump();
                         searchButtonNext.setText("Go");
                         searchStringBox.setEditable(true);
+                        removeEventInfoPanel();
+                        removeBlockInfoPanel();
                         break;
                     case 3:
                         // Page Scrolling
                         setControlsForScrolling();
                         searchButtonNext.setText(" > ");
                         searchStringBox.setEditable(false);
+                        removeEventInfoPanel();
+                        removeBlockInfoPanel();
                         break;
                     case 4:
                         // Evio Block
@@ -1246,6 +1587,7 @@ System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex 
                         // Only search for 0xc0da0100
                         searchStringBox.setSelectedIndex(0);
                         searchStringBox.setEditable(false);
+                        removeEventInfoPanel();
                         break;
                     case 5:
                         // Evio Event
@@ -1253,6 +1595,7 @@ System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex 
                         searchButtonNext.setText(" > ");
                         searchStringBox.setSelectedIndex(0);
                         searchStringBox.setEditable(false);
+                        removeBlockInfoPanel();
                         break;
                     case 6:
                         // Evio Fault
@@ -1423,7 +1766,9 @@ System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex 
                         break;
                     case 5:
                         // Evio Event
-                        handleEventSearch();
+                        EvioScanner.EvioNode node = handleEventSearch();
+                        addEventInfoPanel();
+                        updateEventInfoPanel(node);
                         setSliderPosition();
                         break;
                     case 6:
@@ -1759,6 +2104,14 @@ System.out.println("setWindowData: map index = " + mapIndex);
             long index = wordOffset + (row * 5) + col - 1;
 
             if (index > maxWordIndex) {
+                return 0;
+            }
+
+            return (((long)mappedMemoryHandler.getInt(index)) & 0xffffffffL);
+        }
+
+        public long getLongValueAt(long index) {
+            if (index < 0 || index > maxWordIndex) {
                 return 0;
             }
 
