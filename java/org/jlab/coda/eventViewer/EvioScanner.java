@@ -10,44 +10,35 @@ import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 
 /**
- * Created by timmer on 1/9/15.
+ * This class is used to scan a file for evio errors
+ * and catalog them for later viewing.
+ *
+ * @author timmer (1/9/15)
  */
 public class EvioScanner {
 
-
-    private int blockCount = -1;
-    /**
-     * This is the number of events in the file. It is not computed unless asked for,
-     * and if asked for it is computed and cached in this variable.
-     */
-    private int eventCount = -1;
-
-    /** Stores info of the first evio block header with an error. */
-    private BlockNode blockErrorNode;
-
     /** Stores info of the first evio structure in a block with an error. */
-    private final ArrayList<BlockNode> blockErrorNodes = new ArrayList<BlockNode>(10);
+    private final ArrayList<BlockHeader> blockErrorNodes = new ArrayList<BlockHeader>(10);
 
     /** Stores info of the first evio structure in a block with an error. */
     private final ArrayList<EvioNode> eventErrorNodes = new ArrayList<EvioNode>(1000);
 
+    /** Object to memory map the entire file. */
     private final SimpleMappedMemoryHandler memoryHandler;
 
+    /** Byte order of the file. */
     private ByteOrder fileByteOrder;
 
-    // Reference needed in order to update progress bar when searching for errors
+    /** Reference needed to update progress bar when searching file for evio errors. */
     private FileFrameBig.ErrorTask errorTask;
 
-    public ArrayList<BlockNode> getBlockErrorNodes() { return blockErrorNodes; }
 
-    public ArrayList<EvioNode> getEventErrorNodes() {
-        return eventErrorNodes;
-    }
-
-    public boolean hasError() {
-        return blockErrorNodes.size() > 0;
-    }
-
+    /**
+     * Is the given data type one that can have non-zero padding?
+     * @param type evio data type
+     * @return {@code true} if the data type can have non-zero padding,
+     *         else {@code false}.
+     */
     static public boolean dataTypeHasPadding(DataType type) {
         return type == DataType.CHAR8 ||
                type == DataType.UCHAR8 ||
@@ -56,7 +47,10 @@ public class EvioScanner {
     }
 
 
-    final class BlockNode {
+    /**
+     * This class is copied from jevio.BlockNode and slightly modified.
+     */
+    static final class BlockHeader {
 
         /** Block's length value (32-bit words). */
         int len;
@@ -73,20 +67,30 @@ public class EvioScanner {
          * Useful for appending banks to EvioEvent object.
          */
         int place;
-
+        /** Word containing version, hasDictionary, and is Last info. */
         int infoWord;
+        /** Evio version. */
         int version=4;
+        /** Block has dictionary event. */
         boolean hasDictionary;
+        /** Is last block in file. */
         boolean isLast;
-        
+        /** Contains description of any error in block's data. */
         String error;
 
+
+
+        /**
+         * Given the info word, set version, isLast, and hasDictionary values.
+         * @param infoWord info word of block header
+         */
         void setInfoWord(int infoWord) {
             this.infoWord = infoWord;
             version       = infoWord & 0xff;
             isLast        = BlockHeaderV4.isLastBlock(infoWord);
             hasDictionary = BlockHeaderV4.hasDictionary(infoWord);
         }
+
 
         /**
          * Set members given an array containing the block header values.
@@ -96,7 +100,7 @@ public class EvioScanner {
             len           = blockInts[0];
             place         = blockInts[1];
             headerLen     = blockInts[2];
-            eventCount    = blockInts[3];
+            count         = blockInts[3];
             infoWord      = blockInts[5];
             version       = infoWord & 0xff;
             isLast        = BlockHeaderV4.isLastBlock(infoWord);
@@ -118,9 +122,9 @@ public class EvioScanner {
         int type;
         /** Tag. */
         int tag;
-        /** Num if Bank or Segment. */
+        /** Num, only meaningful for Bank. */
         int num;
-        /** Padding if type is 8 or 16 bit int. */
+        /** Padding, only meaningful if type is 8 or 16 bit int. */
         int pad;
 
         /** Length of node's data in 32-bit words. */
@@ -134,6 +138,7 @@ public class EvioScanner {
          * used to find pos & dataPos. */
         long offset;
 
+        /** Contains description of any error in event's header. */
         String error;
 
         /** Does this node represent an event (top-level bank)? */
@@ -155,7 +160,6 @@ public class EvioScanner {
         //----------------------------------
         // Constructors (package accessible)
         //----------------------------------
-
 
         /**
          * Constructor which creates an EvioNode associated with
@@ -214,31 +218,11 @@ public class EvioScanner {
         // Getters  &  Setters
         //-------------------------------
 
-//        /**
-//         * Set data from 2 bank header words.
-//         *
-//         * @param headerWord1  event's first header word
-//         * @param headerWord1  event's second header word
-//         */
-//        public void setData(int headerWord1, int headerWord2) {
-//            len  = headerWord1;
-//            tag  = headerWord2 >> 16 & 0xffff;
-//            num  = headerWord2 & 0xff;
-//            pad  = headerWord2 >> 14 & 0x3;
-//            type = headerWord2 >> 8 & 0x3f;
-//        }
-
-        public long getFilePosition() {
-            return offset + pos;
-        }
-
         /**
-         * Get the length of this evio structure including entire header in bytes.
-         * @return length of this evio structure including entire header in bytes.
+         * Get the position of this event in file.
+         * @return position of this event in file.
          */
-        public int getTotalBytes() {
-            return 4*dataLen + dataPos - pos;
-        }
+        public long getFilePosition() { return offset + pos; }
 
 
         /**
@@ -256,22 +240,16 @@ public class EvioScanner {
         public DataType getTypeObj() {
             return DataType.getDataType(type);
         }
-
-
-        /**
-         * If this object represents an event (top-level, evio bank),
-         * then returns its number (place in file or buffer) starting
-         * with 1. If not, return -1.
-         * @return event number if representing an event, else -1
-         */
-        public int getEventNumber() {
-            return (place + 1);
-        }
     }
 
 
 
-    /** Constructor. */
+    /**
+     * Constructor.
+     * @param memoryHandler object with file memory maps.
+     * @param errorTask     object doing file scan in background,
+     *                      use to update its progress.
+     */
     public EvioScanner(SimpleMappedMemoryHandler memoryHandler, FileFrameBig.ErrorTask errorTask) {
         this.memoryHandler = memoryHandler;
         this.errorTask = errorTask;
@@ -284,6 +262,27 @@ public class EvioScanner {
         }
     }
 
+
+    /**
+     * Get the list of BlockHeader objects containing evio errors.
+     * @return list of BlockHeader objects containing evio errors.
+     */
+    public ArrayList<BlockHeader> getBlockErrorNodes() { return blockErrorNodes; }
+
+
+    /**
+     * Get the list of EvioNode objects containing evio errors.
+     * @return list of EvioNode objects containing evio errors.
+     */
+    public ArrayList<EvioNode> getEventErrorNodes() { return eventErrorNodes; }
+
+
+    /**
+     * Did the scan of the file show any evio errors?
+     * @return {@code true} if there were errors, else {@code false}.
+     */
+    public boolean hasError() {return (blockErrorNodes.size() > 0 ||
+                                       eventErrorNodes.size() > 0); }
 
 
     /**
@@ -299,12 +298,12 @@ public class EvioScanner {
      * @param fileOffset Offset in bytes from beginning of file to beginning
      *                   of map used to find pos & dataPos.
      *
-     * @return EvioNode object containing evio structure with error
+     * @return EvioNode object containing evio structure with error or null if none
      */
     private EvioNode searchForErrorInEvent(ByteBuffer buffer,
                                            int position, int place, int bytesLeft,
                                            long fileOffset) {
-
+        boolean debug = true;
         int pad, tag, num, dataType;
 
         // Store evio event info, without de-serializing, into EvioNode object
@@ -322,7 +321,7 @@ public class EvioScanner {
         // even though it is NOT completely read at this time.
         if (bytesLeft < 4*(node.len + 1)) {
             node.error = "buffer underflow";
-System.out.println("Error1: " + node.error);
+if (debug) System.out.println("Error1: " + node.error);
             return node;
         }
 
@@ -376,7 +375,7 @@ System.out.println("Error1: " + node.error);
                 node.error = "Padding (= " + pad + ") does not match data type (= "
                         + dataTypeObj + ")";
             }
-System.out.println("Error2: " + node.error);
+if (debug) System.out.println("Error2: " + node.error);
             return node;
         }
 
@@ -386,9 +385,10 @@ System.out.println("Error2: " + node.error);
 
 
     /**
-     * This method recursively stores, in the given list, all the information
-     * about an evio structure's children found in the given ByteBuffer object.
-     * It uses absolute gets so buffer's position does <b>not</b> change.
+     * This method examines recursively all the information
+     * about an evio structure's children. If there are any evio errors,
+     * it returns an EvioNode object corresponding to the lowest level
+     * structure containing the error.
      *
      * @param node node being scanned
      */
@@ -401,8 +401,6 @@ System.out.println("Error2: " + node.error);
         if (!type.isStructure()) {
             return null;
         }
- //System.out.println("scanStructure: scanning evio struct with len = " + node.dataLen);
- //System.out.println("scanStructure: data type of node to be scanned = " + type);
 
         // Start at beginning position of evio structure being scanned
         int position = node.dataPos;
@@ -411,9 +409,8 @@ System.out.println("Error2: " + node.error);
         int endingPos = position + 4*node.dataLen;
         // Buffer we're using
         ByteBuffer buffer = node.buffer;
-//System.out.println("scanStructure: pos = " + position + ", ending pos = " + endingPos +
-//", lim = " + buffer.limit() + ", cap = " + buffer.capacity());
 
+        // How much memory do it child structures take up?
         int thisStructureDataWords = node.len;
         DataType nodeType = node.getTypeObj();
         if (nodeType == DataType.BANK || nodeType == DataType.ALSOBANK) {
@@ -425,6 +422,7 @@ System.out.println("Error2: " + node.error);
         DataType dataTypeObj;
         int totalKidWords = 0;
         int dt, dataType, dataLen, len, pad, tag, num;
+        boolean debug = true;
 
         // Do something different depending on what node contains
         switch (type) {
@@ -434,10 +432,6 @@ System.out.println("Error2: " + node.error);
                 // Extract all the banks from this bank of banks.
                 // Make allowance for reading header (2 ints).
                 while (position < endingPos - 8) {
-//System.out.println("scanStructure: buf is at pos " + buffer.position() +
-//                   ", limit =  " + buffer.limit() + ", remaining = " + buffer.remaining() +
-//                   ", capacity = " + buffer.capacity());
-
                     // Read first header word
                     len = buffer.getInt(position);
 
@@ -507,13 +501,9 @@ System.out.println("Error2: " + node.error);
                             kidNode.error = "Padding (= " + pad + ") does not match data type (= "
                                     + dataTypeObj + ")";
                         }
-System.out.println("Error 1: " + kidNode.error);
+if (debug) System.out.println("Error 1: " + kidNode.error);
                         return kidNode;
                     }
-
-//System.out.println("scanStructure: kid bank at pos = " + kidNode.pos +
-//                   " with type " +  DataType.getDataType(dataType) + ", tag/num = " + kidNode.tag +
-//                   "/" + kidNode.num + ", list size = " + node.eventNode.allNodes.size());
 
                     // Only scan through this child if it's a container
                     if (DataType.isStructure(dataType)) {
@@ -579,11 +569,8 @@ System.out.println("Error 1: " + kidNode.error);
 
                     kidNode.isEvent = false;
 
-                    // Test value of dataType
                     dataTypeObj = DataType.getDataType(dataType);
-                    // If type or pad is a bad value , error
                     if (dataTypeObj == null || (pad > 0 && !dataTypeHasPadding(dataTypeObj))) {
-                        // Return error condition
                         if (dataTypeObj == null ) {
                             kidNode.error = "Bad data type (= " + dataType + ")";
                         }
@@ -591,13 +578,9 @@ System.out.println("Error 1: " + kidNode.error);
                             kidNode.error = "Padding (= " + pad + ") does not match data type (= "
                                     + dataTypeObj + ")";
                         }
-System.out.println("Error 2: " + kidNode.error);
+if (debug) System.out.println("Error 2: " + kidNode.error);
                         return kidNode;
                     }
-
-// System.out.println("scanStructure: kid seg at pos = " + kidNode.pos +
-//                    " with type " +  DataType.getDataType(dataType) + ", tag/num = " + kidNode.tag +
-//                    "/" + kidNode.num + ", list size = " + node.eventNode.allNodes.size());
 
                     if (DataType.isStructure(dataType)) {
                         returnedNode = scanStructureForError(kidNode);
@@ -653,13 +636,9 @@ System.out.println("Error 2: " + kidNode.error);
                     dataTypeObj = DataType.getDataType(dataType);
                     if (dataTypeObj == null) {
                         kidNode.error = "Bad data type (= " + dataType + ")";
-System.out.println("Error 3: " + kidNode.error);
+if (debug) System.out.println("Error 3: " + kidNode.error);
                         return kidNode;
                     }
-
-// System.out.println("scanStructure: kid tagseg at pos = " + kidNode.pos +
-//                    " with type " +  DataType.getDataType(dataType) + ", tag/num = " + kidNode.tag +
-//                    "/" + kidNode.num + ", list size = " + node.eventNode.allNodes.size());
 
                    if (DataType.isStructure(dataType)) {
                         returnedNode = scanStructureForError(kidNode);
@@ -681,7 +660,7 @@ System.out.println("Error 3: " + kidNode.error);
             // Error in length word(s)
             node.error = "Bad word length(s): node's = " + thisStructureDataWords +
                          ", kids' = " + totalKidWords;
-System.out.println("Error 4: " + node.error);
+if (debug) System.out.println("Error 4: " + node.error);
             return node;
         }
 
@@ -690,9 +669,10 @@ System.out.println("Error 4: " + node.error);
 
 
 
-
     /**
-     * Scan the file for evio errors.
+     * Scan the file for evio errors. Unfortunately, we need to re-memory map the file
+     * a piece at a time since it's too difficult to process evio structures which are
+     * split across more than one map.
      *
      * @returns {@code true if error occurred}, else {@code false}
      * @throws EvioException if file cannot even be attempted to be parsed
@@ -704,12 +684,11 @@ System.out.println("Error 4: " + node.error);
         int      mapByteSize, mapBytesLeft;
         boolean  firstBlock=true, foundError=false, goToNextBlock;
         ByteBuffer memoryMapBuf;
-        BlockNode blockNode;
+        BlockHeader blockNode;
         EvioNode node=null;
 
-        // Keep track of the # of blocks & events in file
-        blockCount = 0;
-        eventCount = 0;
+        // Keep track of the # of events in file
+        int eventCount = 0;
 
         // Bytes from file beginning to map beginning
         // which allows translation of positions in EvioNode
@@ -725,7 +704,6 @@ System.out.println("Error 4: " + node.error);
         }
         catch (IOException e) {/*Should never happen */}
 
-
         // Need enough data to at least read 1 block header (32 bytes)
         if (fileBytesLeft < 32) {
             throw new EvioException("File too small (" + fileBytesLeft + " bytes)");
@@ -735,18 +713,14 @@ System.out.println("Error 4: " + node.error);
             // While there's still unprocessed data in file ...
             while (fileBytesLeft > 0) {
 
-                // Update progress
+                // Update progress in scanning file for errors
                 if (errorTask != null) {
                     int progressPercent = (int) (100*(fileByteSize - fileBytesLeft)/(fileByteSize));
-//System.out.println("progress = " + progressPercent);
                     errorTask.setTaskProgress(progressPercent);
                 }
 
-                // Map memory but not more than max allowed at one time
+                // Map memory but not more than max allowed at one time (2.1GB)
                 mapBytesLeft = mapByteSize = (int) Math.min(fileBytesLeft, Integer.MAX_VALUE);
-
-//System.out.println("MMH constr: sz = " + sz + ", offset = " + offset);
-
                 memoryMapBuf = channel.map(FileChannel.MapMode.READ_ONLY, fileOffset, mapByteSize);
                 memoryMapBuf.order(fileByteOrder);
 
@@ -761,6 +735,7 @@ System.out.println("Error 4: " + node.error);
 
                 do {
 
+                    // We were told to stop by user
                     if (errorTask != null && errorTask.stopSearch()) {
                         return foundError;
                     }
@@ -773,13 +748,8 @@ System.out.println("Error 4: " + node.error);
                     blockEventCount  = memoryMapBuf.getInt(bufPos + 4*BlockHeaderV4.EV_COUNT);
                     magicNum         = memoryMapBuf.getInt(bufPos + 4*BlockHeaderV4.EV_MAGIC);
 
-//                System.out.println("    genEvTablePos: blk ev count = " + blockEventCount +
-//                                           ", blockSize = " + blockWordSize +
-//                                           ", blockHdrSize = " + blockHdrWordSize +
-//                                           ", byteInfo  = " + byteInfo);
-
-                    // Positioned before block header so get its info
-                    blockNode           = new BlockNode();
+                    // Store block header info in object
+                    blockNode           = new BlockHeader();
                     blockNode.pos       = bufPos;
                     blockNode.filePos   = fileOffset + bufPos;
                     blockNode.len       = blockWordSize;
@@ -787,15 +757,14 @@ System.out.println("Error 4: " + node.error);
                     blockNode.count     = blockEventCount;
                     blockNode.place     = blockNum;
                     blockNode.setInfoWord(byteInfo);
-                    blockCount++;
 
+                    /// Init variables
                     goToNextBlock = false;
                     lengthOfEventsInBlock = 0;
 
                     // If magic # is not right, file is not in proper format
                     if (magicNum != BlockHeaderV4.MAGIC_NUMBER) {
                         blockNode.error = "Block header magic # incorrect";
-                        blockErrorNode = blockNode;
                         blockErrorNodes.add(blockNode);
 System.out.println("scanFile: fatal error = " + blockNode.error);
                         return true;
@@ -805,7 +774,6 @@ System.out.println("scanFile: fatal error = " + blockNode.error);
                     if (blockWordSize < 8 || blockHdrWordSize < 8) {
                         blockNode.error = "Block len too small: len = " +
                                            blockWordSize + ", header len = " + blockHdrWordSize;
-                        blockErrorNode = blockNode;
                         blockErrorNodes.add(blockNode);
 System.out.println("scanFile: fatal error = " + blockNode.error);
                         return true;
@@ -816,14 +784,10 @@ System.out.println("scanFile: fatal error = " + blockNode.error);
                         System.out.println("Warning, suspicious block header size, " + blockHdrWordSize);
                     }
 
-//                curLastBlock    = BlockHeaderV4.isLastBlock(byteInfo);
-
                     // Hop over block header to events
                     bufPosInBlock  = bufPos += 4*blockHdrWordSize;
                     mapBytesLeft  -= 4*blockHdrWordSize;
                     fileBytesLeft -= 4*blockHdrWordSize;
-
-//System.out.println("    hopped blk hdr, pos = " + bufPosInBlock);
 
                     // Check for a dictionary - the first event in the first block.
                     // It's not included in the header block count, but we must take
@@ -836,23 +800,20 @@ System.out.println("scanFile: fatal error = " + blockNode.error);
 
                         // Skip over dictionary
                         bufPosInBlock += byteLen;
-//                        mapBytesLeft  -= byteLen;
-//                        fileBytesLeft -= byteLen;
                         lengthOfEventsInBlock += byteLen;
 //System.out.println("    hopped dict, pos = " + bufPosInBlock);
                     }
 
-                    // For each event in block, store its location
+                    // For each event in block ...
                     for (int i=0; i < blockEventCount; i++) {
-                        // Sanity check - must have at least 1 header's amount left
+
+                        // Sanity check - must have at least 1 header's amount to read
                         if (mapBytesLeft - lengthOfEventsInBlock < 8) {
                             blockNode.error = "Not enough data to read event (bad bank len?)";
-                            blockErrorNode = blockNode;
                             blockErrorNodes.add(blockNode);
                             // We're done with this block
                             foundError = true;
                             goToNextBlock = true;
-                            eventCount -= blockEventCount;
 System.out.println("scanFile: fatal error = " + blockNode.error);
                             break;
                         }
@@ -870,38 +831,32 @@ System.out.println("scanFile: fatal error = " + blockNode.error);
                             foundError = true;
                             goToNextBlock = true;
                             blockNode.error = e.getMessage() + " (bad bank len?)";
-                            blockErrorNode = blockNode;
                             blockErrorNodes.add(blockNode);
                         }
 
                         // If there's been an error detected in this event ...
                         if (node != null) {
                             // Try to salvage things by skipping this block and going to next
+System.out.println("scanfile: error in event #" + (eventCount + i) + ", buf pos = " + bufPosInBlock);
                             node.place = eventCount + i;
                             eventErrorNodes.add(node);
+                            blockNode.error = "contained event #" +  node.place + " has error";
                             blockErrorNodes.add(blockNode);
-                            // This will compensate for the line below
-                            eventCount -= blockEventCount;
                             foundError = true;
                             // We're done with this block
                             goToNextBlock = true;
-System.out.println("scanfile: error in event #" + (eventCount + i));
                             break;
                         }
                         else if (goToNextBlock) {
                             // This handles any exception caught just above
-                            eventCount -= blockEventCount;
                             break;
                         }
 
-                        // Hop over header + data
+                        // Hop over header + data to next event or block
                         byteLen = 4*(memoryMapBuf.getInt(bufPosInBlock) + 1);
 
                         bufPosInBlock += byteLen;
-//                        mapBytesLeft  -= byteLen;
-//                        fileBytesLeft -= byteLen;
                         lengthOfEventsInBlock += byteLen;
-
 //System.out.println("    Hopped event " + (i+eventCount) + ", file offset = " + fileOffset + "\n");
                     }
 
@@ -911,7 +866,6 @@ System.out.println("scanfile: error in event #" + (eventCount + i));
                         blockNode.error = "Byte len of events in block (" + lengthOfEventsInBlock +
                                           ") doesn't match block header (" +
                                            4*(blockNode.len - blockHdrWordSize) + ")";
-                        blockErrorNode = blockNode;
                         blockErrorNodes.add(blockNode);
 System.out.println("scanFile: try again error = " + blockNode.error);
                     }
@@ -922,8 +876,7 @@ System.out.println("scanFile: try again error = " + blockNode.error);
                     bufPos        += lengthOfEventsInBlock;
                     mapBytesLeft  -= lengthOfEventsInBlock;
                     fileBytesLeft -= lengthOfEventsInBlock;
-
-                    eventCount += blockEventCount;
+                    eventCount    += blockEventCount;
 
                     // Check to see if all map data is already examined,
                     // if so create the next map.
@@ -945,7 +898,6 @@ System.out.println("scanFile: try again error = " + blockNode.error);
                 // If not enough data in rest of file ...
                 else if (4*blockWordSize > fileBytesLeft) {
                     blockNode.error = "Block len too large (not enough data)";
-                    blockErrorNode = blockNode;
                     blockErrorNodes.add(blockNode);
 System.out.println("scanFile: not enough data for block len");
                     return true;
@@ -953,7 +905,6 @@ System.out.println("scanFile: not enough data for block len");
                 // or not enough data to read next block header (32 bytes)
                 else if (fileBytesLeft < 32) {
                     blockNode.error = "Extra " + fileBytesLeft + " bytes at file end";
-                    blockErrorNode = blockNode;
                     blockErrorNodes.add(blockNode);
 System.out.println("scanFile: data left at file end");
                     return true;
@@ -980,7 +931,6 @@ System.out.println("scanFile: data left at file end");
      * @throws EvioException if endianness or version is bad or too little data
      */
     private void readFirstHeader() throws EvioException {
-        BlockHeaderV4 blockHeader = new BlockHeaderV4();
 
         // Get first block header
         ByteBuffer byteBuffer = memoryHandler.getFirstMap();
