@@ -25,11 +25,13 @@ import java.util.HashMap;
  */
 public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
-    /** The table containing event data. */
+    /** Table containing event data. */
     private JTable dataTable;
 
+    /** Table's data model. */
     private MyTableModel dataTableModel;
 
+    /** Table's custom renderer. */
     private MyRenderer dataTableRenderer;
 
     /** Widget allowing scrolling of table widget. */
@@ -46,20 +48,16 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
     /** Buffer of memory mapped file. */
     private SimpleMappedMemoryHandler mappedMemoryHandler;
-    private JPanel controlPanel;
-    private JButton searchButtonStop;
-    private JProgressBar progressBar;
 
-    private JButton searchButtonNext;
-    private JButton searchButtonPrev;
-    private JComboBox<String> searchStringBox;
-    private String searchString;
+    private JPanel controlPanel;
+
+    // Info back to user
     private JLabel messageLabel;
     private JLabel fileNameLabel;
     private String fileName;
-
     private JSlider viewPosition;
 
+    // Widgets for choosing search type
     private JRadioButton wordValueButton;
     private JRadioButton wordIndexButton;
     private JRadioButton evioBlockButton;
@@ -68,10 +66,24 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
     private JRadioButton pageScrollButton;
     private ButtonGroup  radioGroup;
 
+    // Widgets & members for fault searching
     private JRadioButton[] faultButtons;
     private ButtonGroup faultRadioGroup;
     private Color darkGreen = new Color(0,150,0);
+    private boolean evioFaultsFound;
+    private EvioScanner evioFaultScanner;
 
+    // Panels to hold event & block header info
+    JPanel eventInfoPanel;
+    JPanel blockInfoPanel;
+
+    // Widgets for controlling search & setting value
+    private JProgressBar progressBar;
+    private JButton searchButtonStop;
+    private JButton searchButtonNext;
+    private JButton searchButtonPrev;
+    private JComboBox<String> searchStringBox;
+    private String searchString;
 
     /** Last row to be searched (rows start at 0). */
     private int lastSearchedRow = -1;
@@ -87,10 +99,11 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
     /** Kill search that's taking too long. */
     private volatile boolean stopSearch;
+    /** Tell us when search is done. */
     private volatile boolean searchDone = true;
+    /** Thread to handle search in background. */
+    private SearchTask task;
 
-    private boolean evioFaultsFound;
-    private EvioScanner evioFaultScanner;
 
 
     /**
@@ -100,7 +113,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 		super(file.getName() + " bytes");
 		initializeLookAndFeel();
 
-		// set the close to call System.exit
+		// Set the close to call System.exit
 		WindowAdapter wa = new WindowAdapter() {
 			public void windowClosing(WindowEvent event) {
                 FileFrameBig.this.dispose();
@@ -108,21 +121,22 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 		};
 		addWindowListener(wa);
 
-		// set layout
+		// Set layout
         setLayout(new BorderLayout());
 
+        // Track file's name
         fileName = file.getPath();
 
-        // add menus
+        // Add menus
         addMenus();
 
-        // add buttons
+        // Add buttons
         addControlPanel();
 
-        // add JPanel to view file
+        // Add JPanel to view file
         addFileViewPanel(file);
 
-		// size to the screen
+		// Size to the screen
 		sizeToScreen(this, .85);
 
         setVisible(true);
@@ -210,6 +224,11 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
     }
 
 
+    /**
+     *  Set text of widget providing feedback info.
+     * @param msg   text to display
+     * @param color color of text
+     */
     private void setMessage(String msg, Color color) {
         if (color != null) messageLabel.setForeground(color);
         messageLabel.setText(msg);
@@ -284,7 +303,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                     return;
                 }
                 // If so, go to the top of the next map.
-System.out.println("Jump to TOP of next map");
+//System.out.println("Jump to TOP of next map");
                 rec = new Rectangle(pt.x, 0, dim.width, dim.height);
             }
             else {
@@ -310,7 +329,7 @@ System.out.println("Jump to TOP of next map");
                 }
 
                 // If so, go to the bottom of the previous map
-System.out.println("Jump to BOTTOM of prev map");
+//System.out.println("Jump to BOTTOM of prev map");
                 rec = new Rectangle(pt.x, viewport.getViewSize().height - extraPixels,
                                     dim.width, dim.height);
             }
@@ -343,8 +362,6 @@ System.out.println("Jump to BOTTOM of prev map");
 
             return;
         }
-//System.out.println("map = " + mapRowCol[0] + ", row = " + mapRowCol[1] +
-//                   ", col " + mapRowCol[2]);
         dataTableModel.setMapIndex(mapRowCol[0]);
 
         // Where we jump to at each button press
@@ -365,7 +382,8 @@ System.out.println("Jump to BOTTOM of prev map");
 
     /**
      * Jump up or down to the row containing a cell with value = findValue.
-     * It moves so that a full row is exactly at the top.
+     * It moves so that a full row is exactly at the top. Provides feedback
+     * on progress of search.
      *
      * @param down {@code true}  if going to end of file,
      *             {@code false} if going to top of file
@@ -396,17 +414,18 @@ System.out.println("Jump to BOTTOM of prev map");
         // Height of each row
         int dataTableRowHeight = dataTable.getRowHeight();
 
-        long val;
-        Rectangle rec = null;
-        int row, startingCol=1, finalY, rowY, viewY;
-        boolean foundValue = false;
-
+        // Place to store block header data
         int[] blockData = null;
 
         // Map index starts at 0
         int maxMapIndex = dataTableModel.getMapCount() - 1;
         int startingMapIndex = dataTableModel.getMapIndex();
 
+        long val;
+        Rectangle rec = null;
+        int row, startingCol=1, finalY, rowY, viewY;
+
+        boolean foundValue = false;
         stopSearch = false;
         searchDone = false;
 
@@ -475,10 +494,12 @@ System.out.println("Jump to BOTTOM of prev map");
                                     for (int i=0; i<8; i++) {
                                         blockData[7-i] = (int)dataTableModel.getLongValueAt(index - i);
                                     }
-                                    // We already found the magic # in blockData[7].
-                                    // Check other values to see if they make sense,
+
+                                    // We just found the magic #, but is it part of a block header?
+                                    // Check other values to see if they make sense as a header,
                                     // (7th word is 0, lowest 8 bytes of 6th word is version (4).
                                     if (blockData[6] != 0 || (blockData[5] & 0xf) != 4) {
+                                        // This is most likely NOT a header, so continue search
                                         foundValue = false;
                                         continue;
                                     }
@@ -519,6 +540,7 @@ System.out.println("Jump to BOTTOM of prev map");
                                 // Selection will be made AFTER jump to view (at very end)
                             }
 
+                            // Remember where we found value
                             lastFoundRow = row;
                             lastFoundCol = col;
                             lastFoundMap = dataTableModel.getMapIndex();
@@ -591,10 +613,12 @@ System.out.println("Jump to BOTTOM of prev map");
                                     for (int i=0; i<8; i++) {
                                         blockData[7-i] = (int)dataTableModel.getLongValueAt(index - i);
                                     }
-                                    // We already found the magic # in blockData[7].
-                                    // Check other values to see if they make sense,
+
+                                    // We just found the magic #, but is it part of a block header?
+                                    // Check other values to see if they make sense as a header,
                                     // (7th word is 0, lowest 8 bytes of 6th word is version (4).
                                     if (blockData[6] != 0 || (blockData[5] & 0xf) != 4) {
+                                        // This is most likely NOT a header, so continue search
                                         foundValue = false;
                                         continue;
                                     }
@@ -637,6 +661,7 @@ System.out.println("Jump to BOTTOM of prev map");
                                 // Selection will be made AFTER jump to view (at very end)
                             }
 
+                            // Remember where we found value
                             lastFoundRow = row;
                             lastFoundCol = col;
                             lastFoundMap = dataTableModel.getMapIndex();
@@ -712,7 +737,9 @@ System.out.println("Jump to BOTTOM of prev map");
             }
         }
 
+        // If we did NOT find the value
         if (!foundValue) {
+            // Feedback to user in msg
             if (stopSearch) {
                 setMessage("Search Stopped", darkGreen);
             }
@@ -720,14 +747,16 @@ System.out.println("Jump to BOTTOM of prev map");
                 setMessage("No value found", darkGreen);
             }
 
+            // GO back to previous settings
             lastSearchedCol = lastFoundCol;
             lastSearchedRow = lastFoundRow;
 
-            // switch mem maps if necessary
+            // Switch mem maps if necessary
             if (dataTableModel.getMapIndex() != lastFoundMap) {
                 dataTableModel.setMapIndex(lastFoundMap);
             }
 
+            // Select what we last found
             dataTable.setRowSelectionInterval(lastFoundRow, lastFoundRow);
             dataTable.setColumnSelectionInterval(lastFoundCol, lastFoundCol);
 
@@ -735,6 +764,7 @@ System.out.println("Jump to BOTTOM of prev map");
             return blockData;
         }
 
+        // If we found something, make it visible
         if (rec != null) {
             dataTable.scrollRectToVisible(rec);
             dataTableModel.dataChanged();
@@ -790,9 +820,9 @@ System.out.println("Jump to BOTTOM of prev map");
             progressBar.setValue(0);
             setSliderPosition();
 
+            // If looking for a block, display its info
             if (findBlock) {
                 if (blockInfoPanel == null) {
-System.out.println("Search task: call add panel");
                     addBlockInfoPanel();
                 }
                 updateBlockInfoPanel(blockData);
@@ -841,13 +871,16 @@ System.out.println("Search task: call add panel");
     }
 
 
-    private SearchTask task;
-
-
+    /**
+     * Method to search for a value in the background.
+     * @param down       going up or down?
+     * @param findBlock  are we looking for a block header?
+     */
     private void handleWordValueSearch(final boolean down, boolean findBlock) {
         setMessage(" ", null);
         long l = 0xc0da0100L;
 
+        // If NOT searching for a block ...
         if (!findBlock) {
             String txt = (String) searchStringBox.getSelectedItem();
             System.out.println("String = \"" + txt + "\"");
@@ -881,9 +914,7 @@ System.out.println("Search task: call add panel");
     }
 
 
-    /**
-     * Search for evio errors from beginning of file.
-     */
+    /** Search for evio errors from beginning of file in background. */
     private void handleErrorSearch() {
         stopSearch = false;
         searchDone = false;
@@ -934,13 +965,15 @@ System.out.println("Search task: call add panel");
                 dataTableModel.setMapIndex(mapRowCol[0]);
             }
 
+            // Look forward 7 words to possible magic #
             val = dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2]);
 //System.out.println("initially at possible block index, map = " + mapRowCol[0] + ", r " + mapRowCol[1] +
 //        ", c " + mapRowCol[2] + ", val = " + val + ", in hex 0x" + Long.toHexString(val));
 
+            // If it is indeed a magic number, there is a block header at very beginning
             if (val == 0xc0da0100L) {
-//System.out.println("initially scrolling past block header, then return");
                 searchDone = true;
+                // Hop over block header to next int which should be start of an event
                 wordIndex += 8;
                 // Put new cell in view & select
                 scrollToIndex(wordIndex);
@@ -986,8 +1019,9 @@ System.out.println("Search task: call add panel");
 //System.out.println("at possible block index, map = " + mapRowCol[0] + ", r = " + mapRowCol[1] +
 //        ", c = " + mapRowCol[2] + ", val = " + val + ", in hex 0x" + Long.toHexString(val));
 
+        // If we're at the front of block header
         if (val == 0xc0da0100L) {
-//System.out.println("initially scrolling past block header, then return");
+            // Hop past it
             wordIndex += 8;
         }
         //---------------------------------------------------------------
@@ -1001,8 +1035,13 @@ System.out.println("Search task: call add panel");
     }
 
 
+    /**
+     * Go to a given word index in file and put into view.
+     */
     private void handleWordIndexSearch() {
         setMessage(" ", null);
+
+        // Interpret search coordinate box entry
         long l = 1;
         String txt = (String) searchStringBox.getSelectedItem();
         if (txt.length() > 1 && txt.substring(0, 2).equalsIgnoreCase("0x")) {
@@ -1020,22 +1059,22 @@ System.out.println("Search task: call add panel");
 
         if (l < 1) l = 1L;
 
+        // Go to it
         scrollToIndex(l-1);
     }
 
 
-    /** Invoked when task's progress property changes. */
+    /** Handler invoked when task's progress property changes. */
     public void propertyChange(PropertyChangeEvent evt) {
         if (searchDone) {
-//            System.out.println("propChange: search is done");
             return;
         }
 
         if ("progress".equalsIgnoreCase(evt.getPropertyName())) {
-//System.out.println("propChange: set bar to " + ((Integer) evt.getNewValue()));
             progressBar.setValue((Integer) evt.getNewValue());
         }
     }
+
 
     /** Enable/disable control buttons in preparation for doing a search. */
     private void setControlsForSearch() {
@@ -1091,6 +1130,7 @@ System.out.println("Search task: call add panel");
         evioFaultButton. setEnabled(true);
     }
 
+
     /**
      * Set the position of the slider which represents the placement
      * of the currently visible data in relation to its position in
@@ -1117,15 +1157,18 @@ System.out.println("Search task: call add panel");
         viewPosition.setValue((int)(1000L*midRow/dataTableModel.getTotalRows()));
     }
 
-    JPanel eventInfoPanel;
 
-
+    /**
+     * Update the panel showing an event's header info.
+     * @param node object containing header info.
+     */
     private void updateEventInfoPanel(EvioScanner.EvioNode node) {
         if (node == null || eventInfoPanel == null) return;
 
         ((JLabel)(eventInfoPanel.getComponent(1))).setText("" + ((long)node.len & 0xffffffffL));
         ((JLabel)(eventInfoPanel.getComponent(3))).setText("0x" + Integer.toHexString(node.tag));
         ((JLabel)(eventInfoPanel.getComponent(5))).setText("" + node.num);
+        ((JLabel)(eventInfoPanel.getComponent(11))).setText("" + node.pad);
 
         // Catch bad types
         String type;
@@ -1151,10 +1194,10 @@ System.out.println("Search task: call add panel");
 
         ((JLabel)(eventInfoPanel.getComponent(9))).setText("" + dtype);
 
-
-        ((JLabel)(eventInfoPanel.getComponent(11))).setText("" + node.pad);
     }
 
+
+    /** Remove the event information panel from gui. */
     private void removeEventInfoPanel() {
         if (eventInfoPanel == null) {
             return;
@@ -1163,7 +1206,7 @@ System.out.println("Search task: call add panel");
         Component[] comps = controlPanel.getComponents();
         for (int i=0; i < comps.length; i++) {
             if (comps[i] == eventInfoPanel) {
-                 // Need to remove both the block info panel
+                 // Need to remove both the event info panel
                 controlPanel.remove(i);
                 // and the vertical strut before it
                 controlPanel.remove(i-1);
@@ -1175,6 +1218,8 @@ System.out.println("Search task: call add panel");
         eventInfoPanel = null;
     }
 
+
+    /** Add the event information panel to gui. */
     private void addEventInfoPanel() {
         if (eventInfoPanel != null) {
             return;
@@ -1227,9 +1272,10 @@ System.out.println("Search task: call add panel");
     }
 
 
-
-    JPanel blockInfoPanel;
-
+    /**
+     * Method to update panel containing block header info.
+     * @param blockData array containing block header info.
+     */
     private void updateBlockInfoPanel(int[] blockData) {
         if (blockData == null ||blockInfoPanel == null ) return;
 
@@ -1242,6 +1288,11 @@ System.out.println("Search task: call add panel");
         ((JLabel)(blockInfoPanel.getComponent(13))).setText(""+ BlockHeaderV4.isLastBlock(blockData[5]));
     }
 
+
+    /**
+     * Method to update panel containing block header info.
+     * @param node object containing block header info.
+     */
     private void updateBlockInfoPanel(EvioScanner.BlockNode node) {
         if (node == null || blockInfoPanel == null) return;
 
@@ -1254,6 +1305,8 @@ System.out.println("Search task: call add panel");
         ((JLabel)(blockInfoPanel.getComponent(13))).setText("" + node.isLast);
     }
 
+
+    /**  Method to remove panel containing block header info from gui. */
     private void removeBlockInfoPanel() {
         if (blockInfoPanel == null) {
             return;
@@ -1274,6 +1327,8 @@ System.out.println("Search task: call add panel");
         blockInfoPanel = null;
     }
 
+
+    /**  Method to add panel containing block header info to gui. */
     private void addBlockInfoPanel() {
         if (blockInfoPanel != null) {
             return;
@@ -1328,16 +1383,14 @@ System.out.println("Search task: call add panel");
     }
 
 
-
-
-
-    /** Add a panel showing evio faults in the data. */
+    /** Add a panel showing evio faults in the data to gui. */
     private void addEvioFaultPanel(ErrorTask errorTask) {
 
         if (evioFaultsFound) {
             return;
         }
 
+        // If no scan for faults has been done, do it now
         if (evioFaultScanner == null) {
             evioFaultScanner = new EvioScanner(mappedMemoryHandler, errorTask);
         }
@@ -1371,6 +1424,10 @@ System.out.println("Search task: call add panel");
         errorPanel.setBorder(compound);
         errorPanel.setLayout(new BorderLayout(0, 10));
 
+
+        // Blocks & events containing evio errors are placed in a list.
+        // Clicking on an item of that list will display either the info
+        // of that block or event.
         MouseListener ml = new MouseListener() {
             public void mousePressed(MouseEvent e)  {}
             public void mouseReleased(MouseEvent e) {}
@@ -1408,12 +1465,14 @@ System.out.println("Search task: call add panel");
 
         };
 
+        // Lists of blocks & events containing evio errors
         ArrayList<EvioScanner.EvioNode>  events = evioFaultScanner.getEventErrorNodes();
         ArrayList<EvioScanner.BlockNode> blocks = evioFaultScanner.getBlockErrorNodes();
 
         int blockCount = blocks.size();
         int eventCount = events.size();
 
+        // Create a radio button for each fault/error
         faultButtons = new JRadioButton[blockCount + eventCount];
 
         JPanel faultPanel = new JPanel();
@@ -1528,7 +1587,6 @@ System.out.println("Search task: call add panel");
         evioFaultButton = new JRadioButton("Evio Fault");
         evioFaultButton.setMnemonic(KeyEvent.VK_F);
         evioFaultButton.setActionCommand("6");
-//        evioFaultButton.setEnabled(false);
 
         // Group the radio buttons
         radioGroup = new ButtonGroup();
@@ -1845,6 +1903,7 @@ System.out.println("Search task: call add panel");
 
         if (file == null) return;
 
+        // Create object to memory map the whole file (perhaps in chunks)
         try {
             mappedMemoryHandler = new SimpleMappedMemoryHandler(file, order);
         }
@@ -1859,6 +1918,7 @@ System.out.println("Search task: call add panel");
         dataTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         dataTable.setCellSelectionEnabled(true);
         dataTable.setSelectionBackground(Color.yellow);
+
         // Start searching from mouse-clicked cell
         dataTable.addMouseListener(
                 new MouseListener() {
@@ -1873,6 +1933,21 @@ System.out.println("select listener: search is NOT done");
                         lastSearchedCol = dataTable.getSelectedColumn();
 System.out.println("select listener: row = " + lastSearchedRow +
                    ", col = " + lastSearchedCol);
+
+                        // If we're looking for events ...
+                        if (evioEventButton.isSelected()) {
+                            // Display current selection as if it is start of bank
+
+                            // Transform row & col into absolute index
+                            long wordIndex = dataTableModel.getWordIndexOf(lastSearchedRow,lastSearchedCol);
+
+                            // Parse this & next word as bank header
+                            EvioScanner.EvioNode node = new EvioScanner.EvioNode((int)(dataTableModel.getLongValueAt(wordIndex)),
+                                                                                 (int)(dataTableModel.getLongValueAt(wordIndex + 1)));
+                            // Display
+                            addEventInfoPanel();
+                            updateEventInfoPanel(node);
+                        }
                     }
 
                     public void mouseReleased(MouseEvent e) { }
@@ -1904,37 +1979,57 @@ System.out.println("select listener: row = " + lastSearchedRow +
     //-------------------------------------------
 
 
-    /** This class describes the data table's data including column names. */
+    /** This class describes the data table's data including column names.
+     *  Each file is broken up into 200MB (maxMapByteSize) memory maps
+     *  (last one is probably smaller than that since file size is probably
+     *  not an exact multiple of 200MB).
+     *  A single map is loaded into the table at any one time. */
     private final class MyTableModel extends AbstractTableModel {
+
+        /** Offset in bytes from beginning of file to
+         * beginning of map currently being viewed. */
         private long wordOffset;
 
-        // Which map are we using? */
+        /** Index to map we are using. */
         private int mapIndex;
 
+        /** Index to last word in file. */
         private final long maxWordIndex;
+
+        /** Size of file in bytes. */
         private final long fileSize;
 
+        /** Number of memory maps used for this file. */
         private final int mapCount;
 
-        // 5 words/row, 4 bytes/word, 20 bytes/row
+        /** Number of words in each table row. */
         private final int wordsPerRow = 5;
+
+        /** Number of bytes in each table row. */
         private final int bytesPerRow = 20;
 
+        // # of rows/map (1 map = 1 window) (200 MB/map max)
 
-        // # of rows/map (1 map = 1 window) (200 MB/map)
+        /** Max number of rows per memory map. */
         private final int  maxRowsPerMap  = 10000000;
+
+        /** Max number of bytes per memory map. */
         private final long maxMapByteSize = 200000000L;
+
+        /** Max number of words (32 bit ints) per memory map. */
         private final long maxWordsPerMap = maxRowsPerMap * wordsPerRow;
 
+        /** Total number of rows currently in table. */
         private long totalRows;
 
-        // Column names won't change
+        /** Column names. */
         private final String[] names = {"Word Position", "+1", "+2", "+3", "+4", "+5", "Comments"};
         private final String[] columnNames = {names[0], names[1], names[2],
                                               names[3], names[4], names[5],
                                               names[6]};
 
 
+        /** Constructor. */
         public MyTableModel(long fileSize) {
             this.fileSize = fileSize;
             // Min file size = 4 bytes
@@ -1942,15 +2037,26 @@ System.out.println("select listener: row = " + lastSearchedRow +
             mapCount = mappedMemoryHandler.getMapCount();
         }
 
+        /**
+         * Get the max # of rows per map.
+         * @return max # of rows per map.
+         */
         public int getMaxRowsPerMap() {
             return maxRowsPerMap;
         }
 
+        /**
+         * Get the # of memory maps.
+         * @return # of memory maps.
+         */
         public int getMapCount() {
             return mapCount;
         }
 
-        /** Return the # of rows representing entire file. */
+        /**
+         * Get the total # of rows in file.
+         * @return total # of rows in file.
+         */
         public long getTotalRows() {
              // Only calculate this once
             if (totalRows < 1) {
@@ -1964,7 +2070,8 @@ System.out.println("select listener: row = " + lastSearchedRow +
         }
 
         /**
-         * Set data to next map if there is one.
+         * Set data to next map if there is one, but
+         * do not refresh table view.
          * @return {@code true} if next map loaded,
          *         else {@code false} if already using last map.
          */
@@ -1975,11 +2082,15 @@ System.out.println("select listener: row = " + lastSearchedRow +
 
             mapIndex++;
             wordOffset = mapIndex*maxWordsPerMap;
-//            fireTableDataChanged();
-            System.out.println("Jumped to NEXT map " + mapIndex);
             return true;
         }
 
+        /**
+         * Set data to previous map if there is one, but
+         * do not refresh table view.
+         * @return {@code true} if previous map loaded,
+         *         else {@code false} if already using first map.
+         */
         public boolean previousMap() {
             if (mapIndex == 0) {
                 return false;
@@ -1987,72 +2098,88 @@ System.out.println("select listener: row = " + lastSearchedRow +
 
             mapIndex--;
             wordOffset = mapIndex*maxWordsPerMap;
-//            fireTableDataChanged();
-            System.out.println("Jumped to PREV map " + mapIndex);
             return true;
         }
 
+        /**
+         * Get the index of the currently used memory map.
+         * @return index of the currently used memory map.
+         */
         public int getMapIndex() {
             return mapIndex;
         }
 
+        /**
+         * Set the index of the desired memory map and
+         * refresh table view.
+         * @param mi index of the desired memory map.
+         */
         public void setMapIndex(int mi) {
             mapIndex = mi;
             wordOffset = mapIndex*maxWordsPerMap;
             fireTableDataChanged();
         }
 
-        public void dataChanged() {
-            fireTableDataChanged();
-        }
+        /** Refresh view of table. */
+        public void dataChanged() {fireTableDataChanged();}
 
+        /**
+         * Set the table's data to the map containing the given word
+         * and refresh view.
+         * @param wordIndex index to the word to view.
+         */
         public void setWindowData(long wordIndex) {
             long oldMapIndex = mapIndex;
 
             mapIndex = mappedMemoryHandler.getMapIndex(wordIndex);
 
             if (oldMapIndex == mapIndex) {
-System.out.println("setWindowData: map index not changed = " + mapIndex );
                 return;
             }
-System.out.println("setWindowData: map index = " + mapIndex);
             fireTableDataChanged();
         }
 
+        /**
+         * Get the map index, row, and column of the given word
+         * and refresh the view.
+         * @param wordIndex index to the word.
+         * @return array of 3 ints, 1st is map index, 2nd is row, 3rd is column.
+         *         Return null if index out of bounds
+         */
         public int[] getMapRowCol(long wordIndex) {
-            if (wordIndex > maxWordIndex) return null;
+            if (wordIndex > maxWordIndex || wordIndex < 0) return null;
 
             int[] dat = new int[3];
+
             // map index
             dat[0] = (int) (wordIndex*4/maxMapByteSize);
 
             int  byteIndex = (int) (wordIndex*4 - (dat[0] * maxMapByteSize));
-//            long byteIndexLong = (int) (wordIndex*4 - (dat[0] * maxMapByteSize));
-//System.out.println("getMapRowCol: in byteIndex = " + byteIndex + ", long bi = " + byteIndexLong);
-//System.out.println("getMapRowCol: wordIndex*4 = " +(wordIndex*4) + ", offset = " + (dat[0] * maxMapByteSize));
             // row
             dat[1] =  byteIndex / bytesPerRow;
             // column
             dat[2] = (byteIndex % bytesPerRow)/4 + 1;
-//System.out.println("getMapRowCol: row = " + dat[1] + ", col = " + dat[2]);
 
             return dat;
         }
 
-
+        /**
+         * Highlight the given row & col entry, then refresh view.
+         * @param row
+         * @param col
+         */
         public void highListCell(int row, int col) {
             dataTableRenderer.setHighlightCell(null, row, col);
             fireTableCellUpdated(row, col);
         }
 
-        public void clearHighLights() {
-            dataTableRenderer.clearHighlights();
-        }
+        /** Clear all highlights and refresh view. */
+        public void clearHighLights() {dataTableRenderer.clearHighlights();}
 
-        public int getColumnCount() {
-            return columnNames.length;
-        }
+        /** {@inheritDoc} */
+        public int getColumnCount() {return columnNames.length;}
 
+        /** {@inheritDoc} */
         public int getRowCount() {
             // All maps are maxMapByteSize bytes in size except
             // the last one which may be any non-zero size.
@@ -2067,10 +2194,12 @@ System.out.println("setWindowData: map index = " + mapIndex);
             return maxRowsPerMap;
         }
 
+        /** {@inheritDoc} */
         public String getColumnName(int col) {
             return columnNames[col];
         }
 
+        /** {@inheritDoc} */
         public Object getValueAt(int row, int col) {
             if (row < 0) {
                 return "";
@@ -2091,10 +2220,16 @@ System.out.println("setWindowData: map index = " + mapIndex);
             if (index > maxWordIndex) {
                 return "";
             }
-//            System.out.println("getVal: row = " + row + ", col = " + col + ", index = " + index);
+            // Value of cell is in memory map handler
             return String.format("0x%08x", mappedMemoryHandler.getInt(index));
         }
 
+        /**
+         * Get the word value of the given row and column.
+         * @param row   row
+         * @param col   column
+         * @return word value
+         */
         public long getLongValueAt(int row, int col) {
             // 1st column is row or integer #
             if (row < 0 || col == 0 || col == 6) {
@@ -2110,6 +2245,11 @@ System.out.println("setWindowData: map index = " + mapIndex);
             return (((long)mappedMemoryHandler.getInt(index)) & 0xffffffffL);
         }
 
+        /**
+         * Get the word value at the given file word index.
+         * @param index file word index.
+         * @return word value
+         */
         public long getLongValueAt(long index) {
             if (index < 0 || index > maxWordIndex) {
                 return 0;
@@ -2118,6 +2258,12 @@ System.out.println("setWindowData: map index = " + mapIndex);
             return (((long)mappedMemoryHandler.getInt(index)) & 0xffffffffL);
         }
 
+        /**
+         * Get the file word index of the entry at the given row and column.
+         * @param row   row
+         * @param col   column
+         * @return file word index
+         */
         public long getWordIndexOf(int row, int col) {
             // 1st column is row or integer #
             if (col == 0 || col == 6) {
@@ -2127,15 +2273,18 @@ System.out.println("setWindowData: map index = " + mapIndex);
             return wordOffset + (row * 5) + col - 1;
         }
 
+        /** {@inheritDoc} */
         public Class getColumnClass(int c) {
             if (c == 0) return Long.class;
             return String.class;
         }
 
+        /** {@inheritDoc} */
         public boolean isCellEditable(int row, int col) {
             return col > 1;
         }
 
+        /** {@inheritDoc} */
         public void setValueAt(Object value, int row, int col) {
             if (col == 6) {
                 comments.put(row, (String)value);
@@ -2144,25 +2293,34 @@ System.out.println("setWindowData: map index = " + mapIndex);
         }
     }
 
-    /** Set table's data. */
+
+
+    /** Refresh the view of the table's data. */
     void setTableData() {
-        //MyTableModel model = (MyTableModel)dataTable.getModel();
         dataTableModel.fireTableDataChanged();
-//System.out.println("Done adding data to table model");
     }
 
-    /** Render used to change background color every Nth row. */
-    static private class MyRenderer extends DefaultTableCellRenderer {
-        int nthRow;
-        Color alternateRowColor  = new Color(225, 235, 245);
-        Color newForegroundColor = Color.red;
-        ArrayList<int[]> highlightCells = new ArrayList<int[]>(20);
 
+    /** Renderer used to change background color every Nth row and to highlight cells. */
+    static final private class MyRenderer extends DefaultTableCellRenderer {
+        private int   nthRow;
+        private Color alternateRowColor  = new Color(225, 235, 245);
+        private Color newForegroundColor = Color.red;
+        // Keep track of which cells have been highlighted
+        private final ArrayList<int[]> highlightCells = new ArrayList<int[]>(20);
+
+        /** Constructor. */
         public MyRenderer(int nthRow) {
             super();
             this.nthRow = nthRow;
         }
 
+        /**
+         * Is the cell at the given row and column highlighted>
+         * @param row  row
+         * @param col  column
+         * @return {@code true} if highlighted, else {@code false}
+         */
         private boolean isHighlightCell(int row, int col) {
             for (int[] i : highlightCells) {
                 if (i[0] == row && i[1] == col) {
@@ -2172,15 +2330,26 @@ System.out.println("setWindowData: map index = " + mapIndex);
             return false;
         }
 
+        /** Clear the highlights from the list of highlighted items. */
         public void clearHighlights() {
             highlightCells.clear();
         }
 
+        /**
+         * Highlight the cell at the given row and column to the given color.
+         * @param color color to highlight
+         * @param row   row
+         * @param col   column
+         */
         public void setHighlightCell(Color color, int row, int col) {
             if (color != null) newForegroundColor = color;
             highlightCells.add(new int[] {row,col});
         }
 
+
+        /**
+         * Normal rendering means highlighting every nth row with a darker background.
+         * {@inheritDoc} */
         public Component getTableCellRendererComponent(JTable table, Object value,
                                                        boolean isSelected, boolean hasFocus,
                                                        int row, int column) {
