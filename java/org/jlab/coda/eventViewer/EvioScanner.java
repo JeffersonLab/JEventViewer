@@ -682,7 +682,7 @@ if (debug) System.out.println("Error 4: " + node.error);
         int      bufPos, bufPosInBlock, byteInfo, byteLen, magicNum, lengthOfEventsInBlock;
         int      blockNum, blockHdrWordSize, blockWordSize, blockEventCount;
         int      mapByteSize, mapBytesLeft;
-        boolean  firstBlock=true, foundError=false, goToNextBlock;
+        boolean  firstBlock=true, foundError=false, goToNextBlock, debug=true;
         ByteBuffer memoryMapBuf;
         BlockHeader blockNode;
         EvioNode node=null;
@@ -766,7 +766,7 @@ if (debug) System.out.println("Error 4: " + node.error);
                     if (magicNum != BlockHeaderV4.MAGIC_NUMBER) {
                         blockNode.error = "Block header magic # incorrect";
                         blockErrorNodes.add(blockNode);
-System.out.println("scanFile: fatal error = " + blockNode.error);
+if(debug) System.out.println("scanFile: fatal error = " + blockNode.error);
                         return true;
                     }
 
@@ -775,13 +775,13 @@ System.out.println("scanFile: fatal error = " + blockNode.error);
                         blockNode.error = "Block len too small: len = " +
                                            blockWordSize + ", header len = " + blockHdrWordSize;
                         blockErrorNodes.add(blockNode);
-System.out.println("scanFile: fatal error = " + blockNode.error);
+if(debug) System.out.println("scanFile: fatal error = " + blockNode.error);
                         return true;
                     }
 
                     // Block header length not = 8
                     if (blockHdrWordSize != 8) {
-                        System.out.println("Warning, suspicious block header size, " + blockHdrWordSize);
+if(debug) System.out.println("Warning, suspicious block header size, " + blockHdrWordSize);
                     }
 
                     // Hop over block header to events
@@ -814,7 +814,7 @@ System.out.println("scanFile: fatal error = " + blockNode.error);
                             // We're done with this block
                             foundError = true;
                             goToNextBlock = true;
-System.out.println("scanFile: fatal error = " + blockNode.error);
+if(debug) System.out.println("scanFile: fatal error = " + blockNode.error);
                             break;
                         }
 
@@ -837,7 +837,7 @@ System.out.println("scanFile: fatal error = " + blockNode.error);
                         // If there's been an error detected in this event ...
                         if (node != null) {
                             // Try to salvage things by skipping this block and going to next
-System.out.println("scanfile: error in event #" + (eventCount + i) + ", buf pos = " + bufPosInBlock);
+if(debug) System.out.println("scanfile: error in event #" + (eventCount + i) + ", buf pos = " + bufPosInBlock);
                             node.place = eventCount + i;
                             eventErrorNodes.add(node);
                             blockNode.error = "contained event #" +  node.place + " has error";
@@ -867,7 +867,7 @@ System.out.println("scanfile: error in event #" + (eventCount + i) + ", buf pos 
                                           ") doesn't match block header (" +
                                            4*(blockNode.len - blockHdrWordSize) + ")";
                         blockErrorNodes.add(blockNode);
-System.out.println("scanFile: try again error = " + blockNode.error);
+if(debug) System.out.println("scanFile: try again error = " + blockNode.error);
                     }
 
                     // If there is a difference, assume that the block length is good and
@@ -878,8 +878,7 @@ System.out.println("scanFile: try again error = " + blockNode.error);
                     fileBytesLeft -= lengthOfEventsInBlock;
                     eventCount    += blockEventCount;
 
-                    // Check to see if all map data is already examined,
-                    // if so create the next map.
+                    // Check if all map data is already examined, if so create next map
                     if (mapBytesLeft == 0) {
                         break;
                     }
@@ -899,14 +898,14 @@ System.out.println("scanFile: try again error = " + blockNode.error);
                 else if (4*blockWordSize > fileBytesLeft) {
                     blockNode.error = "Block len too large (not enough data)";
                     blockErrorNodes.add(blockNode);
-System.out.println("scanFile: not enough data for block len");
+if(debug) System.out.println("scanFile: not enough data for block len");
                     return true;
                 }
                 // or not enough data to read next block header (32 bytes)
                 else if (fileBytesLeft < 32) {
                     blockNode.error = "Extra " + fileBytesLeft + " bytes at file end";
                     blockErrorNodes.add(blockNode);
-System.out.println("scanFile: data left at file end");
+if(debug) System.out.println("scanFile: data left at file end");
                     return true;
                 }
 
