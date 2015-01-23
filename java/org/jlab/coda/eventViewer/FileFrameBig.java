@@ -1291,18 +1291,18 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
     /**
      * Method to update panel containing block header info.
-     * @param node object containing block header info.
+     * @param header object containing block header info.
      */
-    private void updateBlockInfoPanel(EvioScanner.BlockNode node) {
-        if (node == null || blockInfoPanel == null) return;
+    private void updateBlockInfoPanel(EvioScanner.BlockHeader header) {
+        if (header == null || blockInfoPanel == null) return;
 
-        ((JLabel)(blockInfoPanel.getComponent(1))).setText(""  + node.len);
-        ((JLabel)(blockInfoPanel.getComponent(3))).setText(""  + node.headerLen);
-        ((JLabel)(blockInfoPanel.getComponent(5))).setText(""  + node.place);
-        ((JLabel)(blockInfoPanel.getComponent(7))).setText(""  + node.count);
-        ((JLabel)(blockInfoPanel.getComponent(9))).setText(""  + node.version);
-        ((JLabel)(blockInfoPanel.getComponent(11))).setText("" + node.hasDictionary);
-        ((JLabel)(blockInfoPanel.getComponent(13))).setText("" + node.isLast);
+        ((JLabel)(blockInfoPanel.getComponent(1))).setText(""  + header.len);
+        ((JLabel)(blockInfoPanel.getComponent(3))).setText(""  + header.headerLen);
+        ((JLabel)(blockInfoPanel.getComponent(5))).setText(""  + header.place);
+        ((JLabel)(blockInfoPanel.getComponent(7))).setText(""  + header.count);
+        ((JLabel)(blockInfoPanel.getComponent(9))).setText(""  + header.version);
+        ((JLabel)(blockInfoPanel.getComponent(11))).setText("" + header.hasDictionary);
+        ((JLabel)(blockInfoPanel.getComponent(13))).setText("" + header.isLast);
     }
 
 
@@ -1442,13 +1442,13 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                 boolean isBlock = strings[0].equals("B");
 
                 if (isBlock) {
-                    EvioScanner.BlockNode node = evioFaultScanner.getBlockErrorNodes().get(index);
-                    setMessage(node.error, Color.red);
-                    scrollToIndex(node.filePos / 4);
+                    EvioScanner.BlockHeader header = evioFaultScanner.getBlockErrorNodes().get(index);
+                    setMessage(header.error, Color.red);
+                    scrollToIndex(header.filePos / 4);
                     setSliderPosition();
                     removeEventInfoPanel();
                     addBlockInfoPanel();
-                    updateBlockInfoPanel(node);
+                    updateBlockInfoPanel(header);
                 }
                 else {
                     EvioScanner.EvioNode node = evioFaultScanner.getEventErrorNodes().get(index);
@@ -1467,7 +1467,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
         // Lists of blocks & events containing evio errors
         ArrayList<EvioScanner.EvioNode>  events = evioFaultScanner.getEventErrorNodes();
-        ArrayList<EvioScanner.BlockNode> blocks = evioFaultScanner.getBlockErrorNodes();
+        ArrayList<EvioScanner.BlockHeader> blocks = evioFaultScanner.getBlockErrorNodes();
 
         int blockCount = blocks.size();
         int eventCount = events.size();
@@ -1482,9 +1482,9 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         DefaultListModel<JRadioButton> model = new DefaultListModel<JRadioButton>();
 
         for (int i=0; i < blockCount; i++) {
-            EvioScanner.BlockNode blockNode = blocks.get(i);
+            EvioScanner.BlockHeader blockHeader = blocks.get(i);
             // Reported number is word position which starts at 1
-            faultButtons[i] = new JRadioButton("Block # " + blockNode.place);
+            faultButtons[i] = new JRadioButton("Block # " + blockHeader.place);
             faultButtons[i].setActionCommand("B:" + i);
             faultRadioGroup.add(faultButtons[i]);
             // Put button in list
