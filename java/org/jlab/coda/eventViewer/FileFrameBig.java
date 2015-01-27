@@ -51,6 +51,12 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
     private JPanel controlPanel;
 
+    // Colors
+    private static Color darkGreen = new Color(0,120,0);
+    private static Color purple = new Color(120,0,120);
+    private static Color darkOrange = new Color(180,90,45);
+
+
     // Info back to user
     private JLabel messageLabel;
     private JLabel fileNameLabel;
@@ -69,7 +75,6 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
     // Widgets & members for fault searching
     private JRadioButton[] faultButtons;
     private ButtonGroup faultRadioGroup;
-    private Color darkGreen = new Color(0,150,0);
     private boolean evioFaultsFound;
     private EvioScanner evioFaultScanner;
 
@@ -169,19 +174,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         switchMenuItem.addActionListener(al_switch);
         menu.add(switchMenuItem);
 
-        // Clear comments
-        ActionListener al_clearComments = new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                setMessage(" ", null);
-                comments.clear();
-                dataTableModel.fireTableDataChanged();
-           }
-        };
-        JMenuItem clearMenuItem = new JMenuItem("Clear comments");
-        clearMenuItem.addActionListener(al_clearComments);
-        menu.add(clearMenuItem);
-
-        // Clear comments
+        // Clear error
         ActionListener al_clearError = new ActionListener() {
             public void actionPerformed(ActionEvent e) {
                 setMessage(" ", null);
@@ -190,6 +183,30 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         JMenuItem clearErrorMenuItem = new JMenuItem("Clear error");
         clearErrorMenuItem.addActionListener(al_clearError);
         menu.add(clearErrorMenuItem);
+
+        // Clear comments
+        ActionListener al_clearComments = new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                setMessage(" ", null);
+                comments.clear();
+                dataTableModel.fireTableDataChanged();
+           }
+        };
+        JMenuItem clearCommentsMenuItem = new JMenuItem("Clear comments");
+        clearCommentsMenuItem.addActionListener(al_clearComments);
+        menu.add(clearCommentsMenuItem);
+
+        // Clear highlights
+        ActionListener al_clearHighlights = new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                setMessage(" ", null);
+                dataTableModel.clearHighLights();
+                dataTableModel.fireTableDataChanged();
+           }
+        };
+        JMenuItem clearHighlightsMenuItem = new JMenuItem("Clear highlights");
+        clearHighlightsMenuItem.addActionListener(al_clearHighlights);
+        menu.add(clearHighlightsMenuItem);
 
         // Quit menu item
         ActionListener al_exit = new ActionListener() {
@@ -345,7 +362,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
      * It moves so that a full row is exactly at the top.
      * @param position index of data word to view
      */
-    private void scrollToIndex(long position) {
+    private void scrollToIndex(long position, Color color) {
         JViewport viewport = tablePane.getViewport();
 
         // The location of the viewport relative to the table
@@ -369,6 +386,11 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         Rectangle rec = new Rectangle(pt.x, finalY, dim.width, dim.height);
         lastSearchedRow = mapRowCol[1];
         lastSearchedCol = mapRowCol[2];
+
+        // Set the color
+        if (color != null) {
+            dataTableRenderer.setHighlightCell(color, lastSearchedRow, lastSearchedCol);
+        }
 
         dataTable.scrollRectToVisible(rec);
         dataTableModel.dataChanged();
@@ -493,6 +515,8 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                                     blockData = new int[8];
                                     for (int i=0; i<8; i++) {
                                         blockData[7-i] = (int)dataTableModel.getLongValueAt(index - i);
+                                        int[] mrc = dataTableModel.getMapRowCol(index - i);
+                                        dataTableModel.highListCell(darkOrange, mrc[1], mrc[2]);
                                     }
 
                                     // We just found the magic #, but is it part of a block header?
@@ -513,7 +537,10 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                             }
 
 //System.out.println("    Found at row = " + row + ", col = " + col);
-                            dataTableModel.highListCell(row, col);
+                            if (!getBlock) {
+                                System.out.println("SET TO RED");
+                                dataTableModel.highListCell(Color.red, row, col);
+                            }
 
                             // Mark it in comments
                             if (comments != null) {
@@ -612,6 +639,8 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                                     blockData = new int[8];
                                     for (int i=0; i<8; i++) {
                                         blockData[7-i] = (int)dataTableModel.getLongValueAt(index - i);
+                                        int[] mrc = dataTableModel.getMapRowCol(index - i);
+                                        dataTableModel.highListCell(darkOrange, mrc[1], mrc[2]);
                                     }
 
                                     // We just found the magic #, but is it part of a block header?
@@ -632,7 +661,10 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                             }
 
 //System.out.println("    Found at row = " + row + ", col = " + col);
-                            dataTableModel.highListCell(row, col);
+                            if (!getBlock) {
+                                System.out.println("SET TO RED");
+                                dataTableModel.highListCell(Color.red, row, col);
+                            }
 
                             // Mark it in comments
                             if (comments != null) {
@@ -976,7 +1008,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                 // Hop over block header to next int which should be start of an event
                 wordIndex += 8;
                 // Put new cell in view & select
-                scrollToIndex(wordIndex);
+                scrollToIndex(wordIndex, Color.blue);
                 node = new EvioScanner.EvioNode((int)(dataTableModel.getLongValueAt(wordIndex)),
                                                 (int)(dataTableModel.getLongValueAt(wordIndex + 1)));
                 return node;
@@ -1027,7 +1059,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         //---------------------------------------------------------------
 
         // Put new cell in view & select
-        scrollToIndex(wordIndex);
+        scrollToIndex(wordIndex, Color.blue);
         searchDone = true;
         node = new EvioScanner.EvioNode((int)(dataTableModel.getLongValueAt(wordIndex)),
                                         (int)(dataTableModel.getLongValueAt(wordIndex + 1)));
@@ -1060,7 +1092,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         if (l < 1) l = 1L;
 
         // Go to it
-        scrollToIndex(l-1);
+        scrollToIndex(l-1, null);
     }
 
 
@@ -1444,7 +1476,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                 if (isBlock) {
                     EvioScanner.BlockHeader header = evioFaultScanner.getBlockErrorNodes().get(index);
                     setMessage(header.error, Color.red);
-                    scrollToIndex(header.filePos / 4);
+                    scrollToIndex(header.filePos / 4, null);
                     setSliderPosition();
                     removeEventInfoPanel();
                     addBlockInfoPanel();
@@ -1454,7 +1486,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                     EvioScanner.EvioNode node = evioFaultScanner.getEventErrorNodes().get(index);
                     setMessage(" ", null);
                     setMessage(node.error, Color.red);
-                    scrollToIndex(node.getFilePosition()/4);
+                    scrollToIndex(node.getFilePosition()/4, null);
                     setSliderPosition();
                     removeBlockInfoPanel();
                     addEventInfoPanel();
@@ -1695,7 +1727,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                 }
 
                 searchString = selectedItem;
-                dataTableModel.clearHighLights();
+//                dataTableModel.clearHighLights();
 
                 if (numItems == 0) {
                     addNewItem = true;
@@ -2165,11 +2197,12 @@ System.out.println("select listener: row = " + lastSearchedRow +
 
         /**
          * Highlight the given row & col entry, then refresh view.
+         * @param color color of highlight
          * @param row
          * @param col
          */
-        public void highListCell(int row, int col) {
-            dataTableRenderer.setHighlightCell(null, row, col);
+        public void highListCell(Color color, int row, int col) {
+            dataTableRenderer.setHighlightCell(color, row, col);
             fireTableCellUpdated(row, col);
         }
 
@@ -2302,12 +2335,14 @@ System.out.println("select listener: row = " + lastSearchedRow +
 
 
     /** Renderer used to change background color every Nth row and to highlight cells. */
-    static final private class MyRenderer extends DefaultTableCellRenderer {
+    final private class MyRenderer extends DefaultTableCellRenderer {
         private int   nthRow;
-        private Color alternateRowColor  = new Color(225, 235, 245);
+        private Color alternateRowColor  = new Color(235, 245, 255);
         private Color newForegroundColor = Color.red;
-        // Keep track of which cells have been highlighted
-        private final ArrayList<int[]> highlightCells = new ArrayList<int[]>(20);
+
+        // Keep track of which cells have been highlighted.
+        // 1st object is int (map), 2nd is int (row), 3rd is int (col), 4th is Color
+        private final ArrayList<Object[]> highlightCells = new ArrayList<Object[]>(20);
 
         /** Constructor. */
         public MyRenderer(int nthRow) {
@@ -2316,18 +2351,23 @@ System.out.println("select listener: row = " + lastSearchedRow +
         }
 
         /**
-         * Is the cell at the given row and column highlighted>
+         * Is the cell at the given row, column, and memory map highlighted?
+         * If so, return which color, else return null;
+         * @param map  index of memory map
          * @param row  row
          * @param col  column
-         * @return {@code true} if highlighted, else {@code false}
+         * @return Color if highlighted, else null
          */
-        private boolean isHighlightCell(int row, int col) {
-            for (int[] i : highlightCells) {
-                if (i[0] == row && i[1] == col) {
-                    return true;
+        private Color isHighlightCell(int map, int row, int col) {
+            for (Object[] cell : highlightCells) {
+                if ((Integer)cell[0] == map &&
+                    (Integer)cell[1] == row &&
+                    (Integer)cell[2] == col) {
+
+                    return (Color)cell[3];
                 }
             }
-            return false;
+            return null;
         }
 
         /** Clear the highlights from the list of highlighted items. */
@@ -2342,8 +2382,8 @@ System.out.println("select listener: row = " + lastSearchedRow +
          * @param col   column
          */
         public void setHighlightCell(Color color, int row, int col) {
-            if (color != null) newForegroundColor = color;
-            highlightCells.add(new int[] {row,col});
+            if (color == null) color = Color.red;
+            highlightCells.add(new Object[] {dataTableModel.getMapIndex(), row, col, color});
         }
 
 
@@ -2368,8 +2408,9 @@ System.out.println("select listener: row = " + lastSearchedRow +
                 }
             }
 
-            if (isHighlightCell(row, column)) {
-                super.setForeground(newForegroundColor);
+            Color color = isHighlightCell(dataTableModel.getMapIndex(), row, column);
+            if (color != null) {
+                super.setForeground(color);
             }
 
             setFont(table.getFont());
