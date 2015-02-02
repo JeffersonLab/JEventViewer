@@ -1856,6 +1856,11 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                         break;
                     case 5:
                         // Evio Event
+
+                        // Selection used for starting point (event) from which
+                        // to find next event, so make it as an event
+                        dataTableModel.highListCell(Color.blue, lastSearchedRow, lastSearchedCol);
+
                         EvioScanner.EvioNode node = handleEventSearch();
                         addEventInfoPanel();
                         updateEventInfoPanel(node);
