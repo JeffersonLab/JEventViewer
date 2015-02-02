@@ -303,7 +303,7 @@ public class EvioScanner {
     private EvioNode searchForErrorInEvent(ByteBuffer buffer,
                                            int position, int place, int bytesLeft,
                                            long fileOffset) {
-        boolean debug = true;
+        boolean debug=false;
         int pad, tag, num, dataType;
 
         // Store evio event info, without de-serializing, into EvioNode object
@@ -422,7 +422,7 @@ if (debug) System.out.println("Error2: " + node.error);
         DataType dataTypeObj;
         int totalKidWords = 0;
         int dt, dataType, dataLen, len, pad, tag, num;
-        boolean debug = true;
+        boolean debug = false;
 
         // Do something different depending on what node contains
         switch (type) {
@@ -682,7 +682,7 @@ if (debug) System.out.println("Error 4: " + node.error);
         int      bufPos, bufPosInBlock, byteInfo, byteLen, magicNum, lengthOfEventsInBlock;
         int      blockNum, blockHdrWordSize, blockWordSize, blockEventCount;
         int      mapByteSize, mapBytesLeft;
-        boolean  firstBlock=true, foundError=false, goToNextBlock, debug=true;
+        boolean  firstBlock=true, foundError=false, goToNextBlock, debug=false;
         ByteBuffer memoryMapBuf;
         BlockHeader blockNode;
         EvioNode node=null;
