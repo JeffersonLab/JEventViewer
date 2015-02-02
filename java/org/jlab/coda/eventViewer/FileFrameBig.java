@@ -538,7 +538,6 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
 //System.out.println("    Found at row = " + row + ", col = " + col);
                             if (!getBlock) {
-                                System.out.println("SET TO RED");
                                 dataTableModel.highListCell(Color.red, row, col);
                             }
 
@@ -662,7 +661,6 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
 //System.out.println("    Found at row = " + row + ", col = " + col);
                             if (!getBlock) {
-                                System.out.println("SET TO RED");
                                 dataTableModel.highListCell(Color.red, row, col);
                             }
 
@@ -915,17 +913,17 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         // If NOT searching for a block ...
         if (!findBlock) {
             String txt = (String) searchStringBox.getSelectedItem();
-            System.out.println("String = \"" + txt + "\"");
+//System.out.println("String = \"" + txt + "\"");
             if (txt.length() > 1 && txt.substring(0, 2).equalsIgnoreCase("0x")) {
                 txt = txt.substring(2);
-                System.out.println("new String = \"" + txt + "\"");
+//System.out.println("new String = \"" + txt + "\"");
                 try {
                     l = Long.parseLong(txt, 16);
                 }
                 catch (NumberFormatException e1) {
                     System.out.println("Number format ex: " + e1.getMessage());
                 }
-                System.out.println("Search for l = " + l);
+//System.out.println("Search for l = " + l);
             }
             else {
                 l = Long.parseLong(txt, 10);
