@@ -431,7 +431,7 @@ if (debug) System.out.println("Error2: " + node.error);
 
                 // Extract all the banks from this bank of banks.
                 // Make allowance for reading header (2 ints).
-                while (position < endingPos - 8) {
+                while (position <= endingPos - 8) {
                     // Read first header word
                     len = buffer.getInt(position);
 
@@ -526,7 +526,7 @@ if (debug) System.out.println("Error 1: " + kidNode.error);
 
                 // Extract all the segments from this bank of segments.
                 // Make allowance for reading header (1 int).
-                while (position < endingPos - 4) {
+                while (position <= endingPos - 4) {
 
                     if (buffer.order() == ByteOrder.BIG_ENDIAN) {
                         tag = buffer.get(position++) & 0xff;
@@ -598,7 +598,7 @@ if (debug) System.out.println("Error 2: " + kidNode.error);
 
                 // Extract all the tag segments from this bank of tag segments.
                 // Make allowance for reading header (1 int).
-                while (position < endingPos - 4) {
+                while (position <= endingPos - 4) {
 
                     if (buffer.order() == ByteOrder.BIG_ENDIAN) {
                         int temp = buffer.getShort(position) & 0xffff;
@@ -658,7 +658,7 @@ if (debug) System.out.println("Error 3: " + kidNode.error);
 
         if (totalKidWords != thisStructureDataWords) {
             // Error in length word(s)
-            node.error = "Bad word length(s): node's = " + thisStructureDataWords +
+            node.error = "Bad word length(s): node's data = " + thisStructureDataWords +
                          ", kids' = " + totalKidWords;
 if (debug) System.out.println("Error 4: " + node.error);
             return node;
