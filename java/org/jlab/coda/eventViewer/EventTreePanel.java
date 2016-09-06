@@ -1,5 +1,6 @@
 package org.jlab.coda.eventViewer;
 
+import com.sun.scenario.effect.impl.sw.java.JSWBlend_SRC_OUTPeer;
 import org.jlab.coda.jevio.*;
 
 import javax.swing.*;
@@ -36,11 +37,18 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
     /** The table containing event data. */
     private JTable dataTable;
 
+    /** The widget containing Composite text data. */
+    private JTextArea dataText;
+
     /** Widget allowing scrolling of tree widget. */
     private JScrollPane treePane;
 
     /** Widget allowing scrolling of table widget. */
     private JScrollPane tablePane;
+
+    /** Widget allowing scrolling of text widget.
+     * Switch with tablePane when displaying Composite data. */
+    private JScrollPane textPane;
 
     /** Widget allowing scrolling of dictionary widget. */
     private JScrollPane dictionaryPane;
@@ -68,7 +76,11 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
     /** Initial width of tree widget when split goes from top to bottom (HORIZONTAL_SPLIT) */
     int horizontalDividerPosition = 500;
 
+    /** View data or view dictionary? */
     boolean viewData = true;
+
+    /** Are we currently viewing numerical data or Composite data in XML (text) ? */
+    boolean viewText = false;
 
 
 
@@ -192,6 +204,38 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
         }
 
         viewData = !viewData;
+    }
+
+
+    /**
+     * Switch the gui's data view between numerical data and Composite data text.
+     * @param toText switch to viewing Composite data text
+     */
+    void switchDataAndText(boolean toText) {
+        if (toText) {
+            if (viewText) return;
+            splitPane.remove(tablePane);
+            splitPane.add(textPane);
+            viewText = true;
+            // set the divider location to correct place
+            if (orientation == JSplitPane.HORIZONTAL_SPLIT) {
+                splitPane.setDividerLocation(horizontalDividerPosition);
+            }
+            else {
+                splitPane.setDividerLocation(verticalDividerPosition);
+            }
+        }
+        else if (viewText) {
+            splitPane.remove(textPane);
+            splitPane.add(tablePane);
+            viewText = false;
+            if (orientation == JSplitPane.HORIZONTAL_SPLIT) {
+                splitPane.setDividerLocation(horizontalDividerPosition);
+            }
+            else {
+                splitPane.setDividerLocation(verticalDividerPosition);
+            }
+        }
     }
 
 
@@ -403,6 +447,23 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
     // End of table stuff
     //--------------------------------------------------
 
+    /** Set text display's data. */
+    void setTextData(String[] data) {
+
+        dataText.setText("");
+
+        if (data == null || data.length < 1) {
+            return;
+        }
+
+        for (String s : data) {
+            dataText.append(s);
+            dataText.append("\n");
+        }
+
+        // Make top of text visible
+        dataText.moveCaretPosition(0);
+    }
 
     /**
      * Add the components to this panel.
@@ -439,6 +500,13 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
         StyleConstants.setFontSize(s, 14);
         StyleConstants.setBold(s, true);
         StyleConstants.setForeground(s, Color.BLUE);
+
+
+        // Set up the text widget for displaying Composite format data
+        // which is presented to us as a single XML string.
+        dataText = new JTextArea(50,50); // hints to rows & cols
+        dataText.setEditable(false);
+        textPane = new JScrollPane(dataText);
 
 
         // Set up the table widget for displaying data
@@ -501,8 +569,7 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
 		tree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
 		tree.addTreeSelectionListener(this);
 
-		JScrollPane scrollPane = new JScrollPane(tree);
-		return scrollPane;
+        return new JScrollPane(tree);
 	}
 
 	/**
@@ -524,6 +591,7 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
 
         if (!structure.isLeaf()) {
             setTableData(null);
+            setTextData(null);
         }
         else {
             int pos;
@@ -536,7 +604,7 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
                 Object[] pathItems = selectionPath.getPath();
 
                 // Pull info out of tree
-                if (pathItems != null && pathItems.length > 0) {
+                if (pathItems.length > 0) {
                     for (int i=0; i < pathItems.length; i++) {
                         BaseStructure bs = (BaseStructure) pathItems[i];
                         // Find what # child we are by looking at all kids of our parent
@@ -559,11 +627,12 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
                 }
             }
 
-            int counter=0, lineCounter=1, index=1;
+            int counter=0;
 			BaseStructureHeader header = structure.getHeader();
 
             switch (header.getDataType()) {
 			case DOUBLE64:
+                switchDataAndText(false);
 				double doubledata[] = structure.getDoubleData();
 				if (doubledata != null) {
                     String[] stringData = new String[doubledata.length];
@@ -575,6 +644,7 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
 				break;
 
 			case FLOAT32:
+                switchDataAndText(false);
 				float floatdata[] = structure.getFloatData();
 				if (floatdata != null) {
                     String[] stringData = new String[floatdata.length];
@@ -586,6 +656,7 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
 
 			case LONG64:
 			case ULONG64:
+                switchDataAndText(false);
 				long longdata[] = structure.getLongData();
 				if (longdata != null) {
                     String[] stringData = new String[longdata.length];
@@ -603,6 +674,7 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
 
 			case INT32:
 			case UINT32:
+                switchDataAndText(false);
 				int intdata[] = structure.getIntData();
 				if (intdata != null) {
                     String[] stringData = new String[intdata.length];
@@ -620,6 +692,7 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
 
 			case SHORT16:
 			case USHORT16:
+                switchDataAndText(false);
 				short shortdata[] = structure.getShortData();
 				if (shortdata != null) {
                     String[] stringData = new String[shortdata.length];
@@ -637,6 +710,7 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
 
 			case CHAR8:
 			case UCHAR8:
+                switchDataAndText(false);
 				byte bytedata[] = structure.getByteData();
 				if (bytedata != null) {
                     String[] stringData = new String[bytedata.length];
@@ -648,18 +722,41 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
 				break;
 
 			case CHARSTAR8:
-                setTableData(structure.getStringData());
+                String[] stringData = structure.getStringData();
+                // How are we going to display the string data?
+                // If this is an array of short strings, the table is fine.
+                // If the strings are long or contain new lines, then the
+                // dataText widget is much better.
+                boolean inTable = true;
+                if (stringData != null && stringData.length > 0) {
+                    int len = stringData[0].length();
+                    int max = len > 100 ? 100 : len-1;
+                    // If # chars > 50 or first 100 chars contain newline, use dataText
+                    if (len > 50 || stringData[0].substring(0,max).contains("\n")) {
+                        inTable = false;
+                    }
+                }
+
+                if (inTable) {
+                    switchDataAndText(false);
+                    setTableData(structure.getStringData());
+                }
+                else {
+                    switchDataAndText(true);
+                    setTextData(stringData);
+                }
 				break;
 
             case COMPOSITE:
                 try {
+                    switchDataAndText(true);
                     CompositeData[] cData = structure.getCompositeData();
                     if (cData != null) {
-                        String[] stringData = new String[cData.length];
-                        for (int i=0; i < cData.length; i++) {
-                            stringData[counter++] = cData[i].toString(intsInHex);
+                        stringData = new String[cData.length];
+                        for (CompositeData cd : cData) {
+                            stringData[counter++] = cd.toXML(intsInHex);
                         }
-                        setTableData(stringData);
+                        setTextData(stringData);
                     }
                 }
                 catch (EvioException e) {
@@ -776,6 +873,7 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
             if (newSelection == null) {
                 // If none, show no data
                 setTableData(null);
+                setTextData(null);
             }
             else {
                 tree.setSelectionPath(newSelection);
