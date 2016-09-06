@@ -1363,7 +1363,7 @@ public class EventTreeMenu {
         menu.add(hexItem);
 
 
-        // ints-viewed-as-hex menu item
+        // switch between viewing data and dictionary
         ActionListener al_dict = new ActionListener() {
             public void actionPerformed(ActionEvent e) {
                 JMenuItem item = (JMenuItem) e.getSource();
