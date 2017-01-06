@@ -56,7 +56,7 @@ public class SimpleMappedMemoryHandler {
 
         long remainingSize = fileSize = fileChannel.size();
         if (fileSize < 4) {
-            throw new IOException("file too small at " + fileSize + " byes");
+            throw new IOException("file too small at " + fileSize + " bytes");
         }
 
         long sz, offset = 0L;
