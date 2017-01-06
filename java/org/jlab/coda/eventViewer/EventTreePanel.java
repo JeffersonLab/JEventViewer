@@ -1,6 +1,5 @@
 package org.jlab.coda.eventViewer;
 
-import com.sun.scenario.effect.impl.sw.java.JSWBlend_SRC_OUTPeer;
 import org.jlab.coda.jevio.*;
 
 import javax.swing.*;
@@ -21,7 +20,14 @@ import java.util.LinkedList;
 /**
  * This is a simple GUI that displays an evio event in a tree.
  * It allows the user to open event files and dictionaries,
- * and go event-by-event showing the event in a JTree.
+ * and go event-by-event showing the event in a JTree.<p>
+ *
+ * The text in a tree associated with a particular evio structure is
+ * determined by evio's BaseStructure.toString() method. So if you want
+ * to change it you must modify this evio code. Note it is the
+ * BaseStructure.getDescription() method that returns the dictionary
+ * contents for that structure.
+ *
  * @author Heddle
  * @author Timmer
  */
@@ -208,7 +214,7 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
 
 
     /**
-     * Switch the gui's data view between numerical data and Composite data text.
+     * Switch the gui's data view between numerical data and text data.
      * @param toText switch to viewing Composite data text
      */
     void switchDataAndText(boolean toText) {
@@ -409,7 +415,7 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
         model.fireTableDataChanged();
     }
 
-    /** Render used to change background color every Nth row. */
+    /** Renderer used to change background color every Nth row. */
     static private class MyRenderer extends DefaultTableCellRenderer {
         int nthRow;
         Color alternateRowColor = new Color(225, 235, 245);
@@ -612,7 +618,7 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
                         BaseStructure parent = bs.getParent();
                         // If null parent, pos = 0
                         if (parent != null) {
-                            Iterator<BaseStructure> iter = parent.getChildren().iterator();
+                            Iterator<BaseStructure> iter = parent.getChildrenList().iterator();
                             for (int j=0; iter.hasNext(); j++) {
                                 BaseStructure bsKid = iter.next();
                                 if (bsKid == bs) {
