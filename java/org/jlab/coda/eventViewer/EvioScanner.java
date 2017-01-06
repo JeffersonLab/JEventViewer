@@ -62,10 +62,7 @@ public class EvioScanner {
         long pos;
         /** Position of block in file.  */
         long filePos;
-        /**
-         * Place of this block in file/buffer. First block = 0, second = 1, etc.
-         * Useful for appending banks to EvioEvent object.
-         */
+        /** Place of this block in file/buffer. First block = 0, second = 1, etc. */
         int place;
         /** Word containing version, hasDictionary, and is Last info. */
         int infoWord;
@@ -151,10 +148,7 @@ public class EvioScanner {
         // For event-level node
         //-------------------------------
 
-        /**
-         * Place of containing event in file/buffer. First event = 0, second = 1, etc.
-         * Useful for converting node to EvioEvent object (de-serializing).
-         */
+        /** Place of containing event in file/buffer. First event = 0, second = 1, etc. */
         int place;
 
         //----------------------------------
