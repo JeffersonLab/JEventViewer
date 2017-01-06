@@ -1960,14 +1960,14 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                     public void mouseClicked(MouseEvent e) {
                         // Ignore mouse click during on-going search
                         if (!searchDone ) {
-System.out.println("select listener: search is NOT done");
+//System.out.println("select listener: search is NOT done");
                             return;
                         }
 
                         lastSearchedRow = dataTable.getSelectedRow();
                         lastSearchedCol = dataTable.getSelectedColumn();
-System.out.println("select listener: row = " + lastSearchedRow +
-                   ", col = " + lastSearchedCol);
+//System.out.println("select listener: row = " + lastSearchedRow +
+//                   ", col = " + lastSearchedCol);
 
                         // If we're looking for events ...
                         if (evioEventButton.isSelected()) {
