@@ -16,8 +16,7 @@ import java.beans.PropertyChangeListener;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteOrder;
-import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.*;
 
 /**
  * This class implements a window that displays a file's bytes as hex, 32 bit integers.
@@ -40,6 +39,9 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
     /** Remember comments placed into 7th column of table. */
     private HashMap<Integer,String> comments = new HashMap<Integer,String>();
 
+    private TreeSet<Long> eventSet = new TreeSet<Long>();
+    private TreeMap<Long,EvioHeader> eventMap = new TreeMap<Long,EvioHeader>();
+
     /** Look at file in big endian order by default. */
     private ByteOrder order = ByteOrder.BIG_ENDIAN;
 
@@ -47,14 +49,43 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
     private JMenuItem switchMenuItem;
 
     /** Buffer of memory mapped file. */
-    private SimpleMappedMemoryHandler mappedMemoryHandler;
+    SimpleMappedMemoryHandler mappedMemoryHandler;
+
+    /** Keep track of the block header currently being viewed so
+     *  back and forward arrows know which events to look for.
+     */
+    private volatile BlockHeader currentBlockHeader;
+
+    /** Was the data scanned for errors? */
+    private volatile boolean isScanned;
+
+    /** Data endian when scanned for errors. */
+    private ByteOrder scannedDataOrder;
+
 
     private JPanel controlPanel;
+    private JPanel errorPanel;
+    private static int controlPanelWidth = 220;
 
     // Colors
     private static Color darkGreen = new Color(0,120,0);
-    private static Color purple = new Color(120,0,120);
-    private static Color darkOrange = new Color(180,90,45);
+
+    private static Color highlightRed    = new Color(255,220,220);
+    private static Color highlightBlue   = new Color(200,230,255);
+    private static Color highlightYellow = new Color(240,240,170);
+    private static Color highlightPurple = new Color(230,210,255);
+    private static Color highlightCyan   = new Color(190,255,255);
+    private static Color highlightGreen  = new Color(210,250,210);
+    private static Color highlightOrange = new Color(255,200,130);
+
+    // Normal colors
+    static Color highlightBlkHdr     = highlightGreen;
+    static Color highlightEvntHdr    = highlightCyan;
+    static Color highlightValue      = highlightYellow;
+    // Error colors
+    static Color highlightBlkHdrErr  = highlightRed;
+    static Color highlightEvntHdrErr = highlightPurple;
+    static Color highlightNodeErr    = highlightOrange;
 
 
     // Info back to user
@@ -84,6 +115,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
     // Widgets for controlling search & setting value
     private JProgressBar progressBar;
+    private JButton searchButtonStart;
     private JButton searchButtonStop;
     private JButton searchButtonNext;
     private JButton searchButtonPrev;
@@ -138,6 +170,9 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         // Add buttons
         addControlPanel();
 
+        // Add color key
+        addKeyPanel();
+
         // Add JPanel to view file
         addFileViewPanel(file);
 
@@ -158,7 +193,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         // Endian switching menu item
         ActionListener al_switch = new ActionListener() {
             public void actionPerformed(ActionEvent e) {
-                setMessage(" ", null);
+                setMessage(" ", null, null);
                 comments.clear();
                 dataTableModel.clearHighLights();
                 switchEndian();
@@ -177,7 +212,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         // Clear error
         ActionListener al_clearError = new ActionListener() {
             public void actionPerformed(ActionEvent e) {
-                setMessage(" ", null);
+                setMessage(" ", null, null);
             }
         };
         JMenuItem clearErrorMenuItem = new JMenuItem("Clear error");
@@ -187,7 +222,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         // Clear comments
         ActionListener al_clearComments = new ActionListener() {
             public void actionPerformed(ActionEvent e) {
-                setMessage(" ", null);
+                setMessage(" ", null, null);
                 comments.clear();
                 dataTableModel.fireTableDataChanged();
            }
@@ -199,7 +234,8 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         // Clear highlights
         ActionListener al_clearHighlights = new ActionListener() {
             public void actionPerformed(ActionEvent e) {
-                setMessage(" ", null);
+                setMessage(" ", null, null);
+                eventMap.clear();
                 dataTableModel.clearHighLights();
                 dataTableModel.fireTableDataChanged();
            }
@@ -220,6 +256,15 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
         menuBar.add(menu);
         setJMenuBar(menuBar);
+    }
+
+
+    /**
+     * Get the endianness of viewed data.
+     * @return endianness of viewed data.
+     */
+    public ByteOrder getOrder() {
+        return order;
     }
 
 
@@ -244,10 +289,12 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
     /**
      *  Set text of widget providing feedback info.
      * @param msg   text to display
-     * @param color color of text
+     * @param foreColor color of foreground (text)
+     * @param backColor color of background
      */
-    private void setMessage(String msg, Color color) {
-        if (color != null) messageLabel.setForeground(color);
+    private void setMessage(String msg, Color foreColor, Color backColor) {
+        messageLabel.setForeground(foreColor);
+        messageLabel.setBackground(backColor);
         messageLabel.setText(msg);
     }
 
@@ -290,8 +337,9 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
      * row is exactly at the top.
      * @param down {@code true} if going to end of file,
      *             {@code false} if going to top of file
+     * @param pagesPerClick how many visible pages to scroll per button click
      */
-    private void scrollToVisible(boolean down) {
+    private void scrollToVisible(boolean down, int pagesPerClick) {
         JViewport viewport = tablePane.getViewport();
 
         // The location of the viewport relative to the table
@@ -307,7 +355,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         int extraPixels = dim.height % dataTable.getRowHeight();
 
         // How far we jump at each button press
-        int deltaY = numRowsViewed*dataTable.getRowHeight();
+        int deltaY = pagesPerClick*numRowsViewed*dataTable.getRowHeight();
 
         Rectangle rec;
 
@@ -361,8 +409,10 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
      * Jump up or down to the specified word position in file.
      * It moves so that a full row is exactly at the top.
      * @param position index of data word to view
+     * @param color    highlight color is any
+     * @param isEvent  are we highlighting an event (and therefore 2 words)?
      */
-    private void scrollToIndex(long position, Color color) {
+    private void scrollToIndex(long position, Color color, boolean isEvent) {
         JViewport viewport = tablePane.getViewport();
 
         // The location of the viewport relative to the table
@@ -374,7 +424,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         // Switch to correct map
         int[] mapRowCol = dataTableModel.getMapRowCol(position);
         if (mapRowCol == null) {
-            JOptionPane.showMessageDialog(this, "Entry exceeded file size", "Return",
+            JOptionPane.showMessageDialog(this, "Reached end of file", "Return",
                     JOptionPane.INFORMATION_MESSAGE);
 
             return;
@@ -389,7 +439,12 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
         // Set the color
         if (color != null) {
-            dataTableRenderer.setHighlightCell(color, lastSearchedRow, lastSearchedCol);
+            if (isEvent) {
+                dataTableModel.highLightEventHeader(color, lastSearchedRow, lastSearchedCol, false);
+            }
+            else {
+                dataTableRenderer.setHighlightCell(color, lastSearchedRow, lastSearchedCol, false);
+            }
         }
 
         dataTable.scrollRectToVisible(rec);
@@ -509,36 +564,20 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
                             // If we're looking for a block header ...
                             if (getBlock) {
-                                long index = dataTableModel.getWordIndexOf(row,col);
-                                // If we're not too close to the beginning ...
-                                if (index > 6) {
-                                    blockData = new int[8];
-                                    for (int i=0; i<8; i++) {
-                                        blockData[7-i] = (int)dataTableModel.getLongValueAt(index - i);
-                                        int[] mrc = dataTableModel.getMapRowCol(index - i);
-                                        dataTableModel.highListCell(darkOrange, mrc[1], mrc[2]);
-                                    }
+                                blockData = dataTableModel.highLightBlockHeader(highlightBlkHdr,
+                                                                                row, col, false);
 
-                                    // We just found the magic #, but is it part of a block header?
-                                    // Check other values to see if they make sense as a header,
-                                    // (7th word is 0, lowest 8 bytes of 6th word is version (4).
-                                    if (blockData[6] != 0 || (blockData[5] & 0xf) != 4) {
-                                        // This is most likely NOT a header, so continue search
-                                        foundValue = false;
-                                        continue;
-                                    }
-//for (int i=0; i<8; i++) {
-//    System.out.println("Block[" + i + "] = " + blockData[i]);
-//}
-                                }
-                                else {
+                                // We just found the magic #, but is it part of a block header?
+                                // Check other values to see if they make sense as a header,
+                                // (7th word is 0, lowest 8 bytes of 6th word is version (4).
+                                if (blockData[6] != 0 || (blockData[5] & 0xf) != 4) {
+                                    // This is most likely NOT a header, so continue search
+                                    foundValue = false;
                                     continue;
                                 }
                             }
-
-//System.out.println("    Found at row = " + row + ", col = " + col);
-                            if (!getBlock) {
-                                dataTableModel.highListCell(Color.red, row, col);
+                            else {
+                                dataTableModel.highLightCell(highlightValue, row, col, false);
                             }
 
                             // Mark it in comments
@@ -578,6 +617,11 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                     // Go to next row
                     row++;
                     startingCol = 1;
+
+                    // Cut way back on the number of times we do this
+                    if (row % 4194304 == 0) {
+                        task.setTaskProgress(dataTableModel.getRowProgress(row));
+                    }
                 }
             }
             else {
@@ -602,7 +646,8 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                             startingCol = 5;
                         }
                     }
-                    else {
+                    else {                                                                                  // Page Scrolling
+
                         // Start at the row of the last value we found
                         row = lastSearchedRow;
                         // Start before the column of the last value we found
@@ -632,37 +677,22 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
                             // If we're looking for a block header ...
                             if (getBlock) {
-                                long index = dataTableModel.getWordIndexOf(row,col);
-                                // If we're not too close to the beginning ...
-                                if (index > 6) {
-                                    blockData = new int[8];
-                                    for (int i=0; i<8; i++) {
-                                        blockData[7-i] = (int)dataTableModel.getLongValueAt(index - i);
-                                        int[] mrc = dataTableModel.getMapRowCol(index - i);
-                                        dataTableModel.highListCell(darkOrange, mrc[1], mrc[2]);
-                                    }
+                                blockData = dataTableModel.highLightBlockHeader(highlightBlkHdr,
+                                                                                row, col, false);
 
-                                    // We just found the magic #, but is it part of a block header?
-                                    // Check other values to see if they make sense as a header,
-                                    // (7th word is 0, lowest 8 bytes of 6th word is version (4).
-                                    if (blockData[6] != 0 || (blockData[5] & 0xf) != 4) {
-                                        // This is most likely NOT a header, so continue search
-                                        foundValue = false;
-                                        continue;
-                                    }
-//for (int i=0; i<8; i++) {
-//    System.out.println("Block[" + i + "] = " + blockData[i]);
-//}
-                                }
-                                else {
+                                // We just found the magic #, but is it part of a block header?
+                                // Check other values to see if they make sense as a header,
+                                // (7th word is 0, lowest 8 bytes of 6th word is version (4).
+                                if (blockData[6] != 0 || (blockData[5] & 0xf) != 4) {
+                                    // This is most likely NOT a header, so continue search
+                                    foundValue = false;
                                     continue;
                                 }
                             }
-
-//System.out.println("    Found at row = " + row + ", col = " + col);
-                            if (!getBlock) {
-                                dataTableModel.highListCell(Color.red, row, col);
+                            else {
+                                dataTableModel.highLightCell(highlightValue, row, col, false);
                             }
+
 
                             // Mark it in comments
                             if (comments != null) {
@@ -703,6 +733,10 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                     // Go to previous row
                     row--;
                     startingCol = 5;
+
+                    if (row % 4194304 == 0) {
+                        task.setTaskProgress(dataTableModel.getRowProgress(row));
+                    }
                 }
             }
 
@@ -718,21 +752,6 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                     break;
                 }
 
-                // Update progress
-                if (task != null) {
-                    int progressPercent;
-                    int currentMapIndex = dataTableModel.getMapIndex();
-                    if (startingMapIndex == maxMapIndex || currentMapIndex == maxMapIndex) {
-                        progressPercent = 100;
-                    }
-                    else {
-                        progressPercent = 100*(currentMapIndex - startingMapIndex)/(maxMapIndex - startingMapIndex);
-                    }
-//System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex +
-//                   ", max = " + maxMapIndex + ", prog = " + progressPercent);
-                    task.setTaskProgress(progressPercent);
-                }
-
                 // Start at beginning of next map
                 lastSearchedRow = -1;
                 lastSearchedCol = 0;
@@ -746,21 +765,6 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                     break;
                 }
 
-                // Update progress
-                if (task != null) {
-                    int progressPercent;
-                    int currentMapIndex = dataTableModel.getMapIndex();
-                    if (startingMapIndex == 0 || currentMapIndex == 0) {
-                        progressPercent = 100;
-                    }
-                    else {
-                        progressPercent = 100*(startingMapIndex - currentMapIndex)/startingMapIndex;
-                    }
-//System.out.println("start = " + startingMapIndex + ", cur = " + currentMapIndex +
-//                   ", max = " + maxMapIndex + ", prog = " + progressPercent);
-                    task.setTaskProgress(progressPercent);
-                }
-
                 // Start at end of previous map
                 lastSearchedRow = dataTableModel.getRowCount() - 1;
                 lastSearchedCol = 6;
@@ -771,10 +775,10 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         if (!foundValue) {
             // Feedback to user in msg
             if (stopSearch) {
-                setMessage("Search Stopped", darkGreen);
+                setMessage("Search Stopped", darkGreen, null);
             }
             else {
-                setMessage("No value found", darkGreen);
+                setMessage("No value found", darkGreen, null);
             }
 
             // GO back to previous settings
@@ -832,7 +836,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         // Main search task executed in background thread
         @Override
         public Void doInBackground() {
-            setControlsForSearch();
+            enableControlsDuringSearch();
             blockData = scrollToAndHighlight(down, value, findBlock, label, this);
             return null;
         }
@@ -841,7 +845,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
             setProgress(p);
         }
 
-        // Executed in event dispatching thread
+        // Executed in event dispatching thread after doInBackground()
         @Override
         public void done() {
             searchDone = true;
@@ -859,20 +863,20 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
             }
 
             Toolkit.getDefaultToolkit().beep();
-            enableControls();
+            enableSearchControls();
         }
     }
 
 
     /** A SwingWorker thread to handle a possibly lengthy search for errors. */
-    class ErrorTask extends SwingWorker<Void, Void> {
+    class ErrorScanTask extends SwingWorker<Void, Void> {
 
-        public ErrorTask() {}
+        public ErrorScanTask() {}
 
         // Main search task executed in background thread
         @Override
         public Void doInBackground() {
-            setControlsForSearch();
+            enableControlsDuringSearch();
             addEvioFaultPanel(this);
             return null;
         }
@@ -887,9 +891,11 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         @Override
         public void done() {
             if (stopSearch()) {
-                setMessage("Search stopped", Color.red);
+                setMessage("Search stopped", Color.red, null);
+                enableControls();
             }
             searchDone = true;
+            stopSearch = false;
             setProgress(0);
             progressBar.setString("Done");
             progressBar.setValue(0);
@@ -907,26 +913,27 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
      * @param findBlock  are we looking for a block header?
      */
     private void handleWordValueSearch(final boolean down, boolean findBlock) {
-        setMessage(" ", null);
+        setMessage(" ", null, null);
         long l = 0xc0da0100L;
 
         // If NOT searching for a block ...
         if (!findBlock) {
             String txt = (String) searchStringBox.getSelectedItem();
 //System.out.println("String = \"" + txt + "\"");
-            if (txt.length() > 1 && txt.substring(0, 2).equalsIgnoreCase("0x")) {
-                txt = txt.substring(2);
+            try {
+                if (txt.length() > 1 && txt.substring(0, 2).equalsIgnoreCase("0x")) {
+                    txt = txt.substring(2);
 //System.out.println("new String = \"" + txt + "\"");
-                try {
                     l = Long.parseLong(txt, 16);
-                }
-                catch (NumberFormatException e1) {
-                    System.out.println("Number format ex: " + e1.getMessage());
-                }
 //System.out.println("Search for l = " + l);
+                }
+                else {
+                    l = Long.parseLong(txt, 10);
+                }
             }
-            else {
-                l = Long.parseLong(txt, 10);
+            catch (NumberFormatException e) {
+                setMessage("Search input not a number: " + txt, Color.red, null);
+                return;
             }
         }
 
@@ -949,10 +956,10 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         stopSearch = false;
         searchDone = false;
 
-        // Use swing worker thread to do time-consuming search in the background
-        ErrorTask task = new ErrorTask();
-        task.addPropertyChangeListener(this);
-        task.execute();
+        // Use swing worker thread to do time-consuming error scan in background
+        ErrorScanTask errorTask = new ErrorScanTask();
+        errorTask.addPropertyChangeListener(this);
+        errorTask.execute();
     }
 
 
@@ -962,66 +969,103 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
      * search from beginning row & col (this may not be good
      * if not in first memory map).
      *
-     * @return array with event header info
+     * @return event header info of next event found.
      */
-    private EvioScanner.EvioNode handleEventSearch() {
-        setMessage(" ", null);
+    private EvioHeader handleEventSearchForward() {
+        setMessage(" ", null, null);
 
         int[] mapRowCol;
-        EvioScanner.EvioNode node = null;
+        EvioHeader node = null;
         long val, wordIndex;
 
         // Where are we now?
         int row = dataTable.getSelectedRow();
         int col = dataTable.getSelectedColumn();
-        int mapIndex = dataTableModel.getMapIndex();
 
-        // If no selection made, start at beginning
-        if (row < 0 || col < 1) {
-            row = 0; col = 1;
+        // If in first(index)/last(comment) column ...
+        if (!dataTableModel.isDataColumn(col)) {
 
-            // Transform row & col into absolute index
-            wordIndex = dataTableModel.getWordIndexOf(row,col);
+            // If starting past the first row & col, error.
+            // Must start at an event.
+            if (row > 0 || col >= dataTableModel.getColumnCount() - 1) {
+                JOptionPane.showMessageDialog(this, "Start at 0 or beginning of known event", "Return",
+                                              JOptionPane.INFORMATION_MESSAGE);
 
-            //---------------------------------------------------------------
-            // Are we at the beginning of a block header? If so, move past it.
-            //---------------------------------------------------------------
-            mapRowCol = dataTableModel.getMapRowCol(wordIndex + 7);
+                return null;
+            }
+            // If no selection made yet (before all rows)
+            else {
+                row = 0;
+                col = 1;
 
-            // First make sure we getting our data from the
-            // correct (perhaps next) memory mapped buffer.
-            if (mapRowCol[0] != mapIndex) {
-//System.out.println("initial switching from map " + mapIndex + " to " + mapRowCol[0]);
+                // Transform row & col into absolute index
+                wordIndex = dataTableModel.getWordIndexOf(row, col);
+
+                //----------------------------------------------------------------------
+                // Are we right at the beginning of a block header? If so, move past it.
+                //----------------------------------------------------------------------
+                mapRowCol = dataTableModel.getMapRowCol(wordIndex + 7);
+
+                // First make sure we getting our data from the
+                // correct (perhaps next) memory mapped buffer.
                 dataTableModel.setMapIndex(mapRowCol[0]);
-            }
 
-            // Look forward 7 words to possible magic #
-            val = dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2]);
-//System.out.println("initially at possible block index, map = " + mapRowCol[0] + ", r " + mapRowCol[1] +
-//        ", c " + mapRowCol[2] + ", val = " + val + ", in hex 0x" + Long.toHexString(val));
+                // Look forward 7 words to possible magic #
+                val = dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2]);
 
-            // If it is indeed a magic number, there is a block header at very beginning
-            if (val == 0xc0da0100L) {
-                searchDone = true;
-                // Hop over block header to next int which should be start of an event
-                wordIndex += 8;
-                // Put new cell in view & select
-                scrollToIndex(wordIndex, Color.blue);
-                node = new EvioScanner.EvioNode((int)(dataTableModel.getLongValueAt(wordIndex)),
-                                                (int)(dataTableModel.getLongValueAt(wordIndex + 1)));
-                return node;
+                // If it is indeed a magic number, there is a block header at very beginning
+                if (val == 0xc0da0100L) {
+                    searchDone = true;
+                    // Hop over block header to next int which should be start of an event
+                    wordIndex += 8;
+                    // Put new cell in view & select
+                    scrollToIndex(wordIndex, highlightEvntHdr, true);
+                    node = new EvioHeader((int) (dataTableModel.getLongValueAt(wordIndex)),
+                                          (int) (dataTableModel.getLongValueAt(wordIndex + 1)),
+                                          wordIndex);
+                    return node;
+                }
+                //---------------------------------------------------------------
             }
-            //---------------------------------------------------------------
         }
+
+        //-----------------------------------------------
+        // Deal with the event where we at are right now
+        //-----------------------------------------------
+
+        // Highlight selected event header len & next word
+        dataTableModel.highLightEventHeader(highlightEvntHdr, row, col, false);
 
         // Transform row & col into absolute index
         wordIndex = dataTableModel.getWordIndexOf(row,col);
+
+        node = new EvioHeader((int) (dataTableModel.getLongValueAt(wordIndex)),
+                              (int) (dataTableModel.getLongValueAt(wordIndex + 1)),
+                              wordIndex);
+
+        // Warn user if the selected word most likely is NOT the first word of a bank
+        if (!node.probablyIsBank()) {
+            int n = JOptionPane.showOptionDialog(this,
+                "\"Probably not a bank, continue?", null,
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.QUESTION_MESSAGE, null, null, null);
+
+            if (n != JOptionPane.OK_OPTION) {
+                return null;
+            }
+        }
+
+        eventMap.put(wordIndex, node);
+        eventSet.add(wordIndex);
+
+        //-----------------------------------------------
+        // Move on to the next event
+        //-----------------------------------------------
 
         // Take value of selected cell and treat that as the
         // beginning of an evio event - its bank length.
         // Hop this many entries in the table
         long eventWordLen = dataTableModel.getLongValueAt(row,col) + 1;
-//System.out.println("jump " + eventWordLen + " words");
 
         // Destination cell's index
         wordIndex += eventWordLen;
@@ -1032,35 +1076,77 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         mapRowCol = dataTableModel.getMapRowCol(wordIndex + 7);
         if (mapRowCol == null) {
             searchDone = true;
-            JOptionPane.showMessageDialog(this, "Entry exceeded file size", "Return",
+            JOptionPane.showMessageDialog(this, "No more events", "Return",
                                           JOptionPane.INFORMATION_MESSAGE);
 
-            return node;
+            return null;
         }
 
         // First make sure we getting our data from the
         // correct (perhaps next) memory mapped buffer.
-        if (mapRowCol[0] != mapIndex) {
-//System.out.println("switching from map " + mapIndex + " to " + mapRowCol[0]);
-            dataTableModel.setMapIndex(mapRowCol[0]);
-        }
+        dataTableModel.setMapIndex(mapRowCol[0]);
 
         val = dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2]);
-//System.out.println("at possible block index, map = " + mapRowCol[0] + ", r = " + mapRowCol[1] +
+//System.out.println("  ***  at possible block index, map = " + mapRowCol[0] + ", r = " + mapRowCol[1] +
 //        ", c = " + mapRowCol[2] + ", val = " + val + ", in hex 0x" + Long.toHexString(val));
 
-        // If we're at the front of block header
+        // If we're at the front of block header, hop past it
         if (val == 0xc0da0100L) {
-            // Hop past it
             wordIndex += 8;
         }
         //---------------------------------------------------------------
 
         // Put new cell in view & select
-        scrollToIndex(wordIndex, Color.blue);
+        scrollToIndex(wordIndex, highlightEvntHdr, true);
         searchDone = true;
-        node = new EvioScanner.EvioNode((int)(dataTableModel.getLongValueAt(wordIndex)),
-                                        (int)(dataTableModel.getLongValueAt(wordIndex + 1)));
+        node = new EvioHeader((int)(dataTableModel.getLongValueAt(wordIndex)),
+                              (int)(dataTableModel.getLongValueAt(wordIndex + 1)),
+                              wordIndex);
+        eventMap.put(wordIndex, node);
+        eventSet.add(wordIndex);
+        return node;
+    }
+
+
+    /**
+     * Go back to the last event previously found.
+     *
+     * @return event header info of last event found.
+     */
+    private EvioHeader handleEventSearchBack() {
+        setMessage(" ", null, null);
+
+        EvioHeader node;
+        long wordIndex;
+
+        if (eventMap.size() == 0) return null;
+
+        // Where are we now?
+        int row = dataTable.getSelectedRow();
+        int col = dataTable.getSelectedColumn();
+
+        // If in first(index)/last(comment) column, pick nearest data col ...
+        if (!dataTableModel.isDataColumn(col)) {
+            if      (col == 0) col = 1;
+            else if (col == 6) col = 5;
+        }
+
+        // Transform row & col into absolute index
+        wordIndex = dataTableModel.getWordIndexOf(row,col);
+
+        // Get map with keys all less than ours
+        SortedMap<Long,EvioHeader> map = eventMap.headMap(wordIndex);
+        if (map.size() < 1) {
+            return null;
+        }
+
+        // Go to the event immediately prior
+        Long key = map.lastKey();
+        if (key == null) {
+            return null;
+        }
+        node = map.get(key);
+        scrollToIndex(key, highlightEvntHdr, true);
         return node;
     }
 
@@ -1069,28 +1155,29 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
      * Go to a given word index in file and put into view.
      */
     private void handleWordIndexSearch() {
-        setMessage(" ", null);
+        setMessage(" ", null,null);
 
         // Interpret search coordinate box entry
         long l = 1;
         String txt = (String) searchStringBox.getSelectedItem();
-        if (txt.length() > 1 && txt.substring(0, 2).equalsIgnoreCase("0x")) {
-            txt = txt.substring(2);
-            try {
+        try {
+            if (txt.length() > 1 && txt.substring(0, 2).equalsIgnoreCase("0x")) {
+                txt = txt.substring(2);
                 l = Long.parseLong(txt, 16);
             }
-            catch (NumberFormatException e1) {
-                System.out.println("Number format ex: " + e1.getMessage());
+            else {
+                l = Long.parseLong(txt, 10);
             }
         }
-        else {
-            l = Long.parseLong(txt, 10);
+        catch (NumberFormatException e) {
+            setMessage("Search input not a number: " + txt, Color.red, null);
+            return;
         }
 
         if (l < 1) l = 1L;
 
         // Go to it
-        scrollToIndex(l-1, null);
+        scrollToIndex(l-1, null, false);
     }
 
 
@@ -1105,59 +1192,88 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         }
     }
 
+    /** Enable/disable control buttons in preparation for doing an error scan. */
+    private void setControlsForErrorScan() {
+        searchButtonStart.setText("Start Scan");
+        searchButtonStop.setText("Stop");
 
-    /** Enable/disable control buttons in preparation for doing a search. */
-    private void setControlsForSearch() {
-        searchButtonStop.setEnabled(true);
-        searchStringBox .setEnabled(false);
-        searchButtonNext.setEnabled(false);
-        searchButtonPrev.setEnabled(false);
-        wordValueButton. setEnabled(false);
-        wordIndexButton. setEnabled(false);
-        pageScrollButton.setEnabled(false);
-        evioBlockButton. setEnabled(false);
-        evioEventButton. setEnabled(false);
-        evioFaultButton. setEnabled(false);
+        enableControls();
+        searchStringBox.setEnabled(false);
     }
 
-    /** Enable/disable control buttons in preparation for jumping to file positions. */
-    private void setControlsForPositionJump() {
-        searchButtonStop.setEnabled(false);
-        searchButtonPrev.setEnabled(false);
-        searchButtonNext.setEnabled(true);
-        wordValueButton. setEnabled(true);
-        wordIndexButton. setEnabled(true);
-        pageScrollButton.setEnabled(true);
-        evioBlockButton. setEnabled(true);
-        evioEventButton. setEnabled(true);
-        evioFaultButton. setEnabled(true);
+    /** Enable control buttons to start a word value search. */
+    private void enableSearchControls() {
+        searchButtonStop.setText("Stop");
+
+        enableControls();
+        searchButtonStart.setEnabled(false);
     }
 
-    /** Enable/disable control buttons in preparation for doing scrolling. */
-    private void setControlsForScrolling() {
-        searchButtonStop.setEnabled(false);
-        searchButtonPrev.setEnabled(true);
-        searchButtonNext.setEnabled(true);
-        wordValueButton. setEnabled(true);
-        wordIndexButton. setEnabled(true);
-        pageScrollButton.setEnabled(true);
-        evioBlockButton. setEnabled(true);
-        evioEventButton. setEnabled(true);
-        evioFaultButton. setEnabled(true);
+    /** Enable control buttons DURING a word value search. */
+    private void enableControlsDuringSearch() {
+        searchButtonStart.setEnabled(false);
+        searchButtonStop. setEnabled(true);
+        searchStringBox . setEnabled(false);
+        searchButtonNext. setEnabled(false);
+        searchButtonPrev. setEnabled(false);
+
+        wordValueButton.  setEnabled(false);
+        wordIndexButton.  setEnabled(false);
+        pageScrollButton. setEnabled(false);
+        evioBlockButton.  setEnabled(false);
+        evioEventButton.  setEnabled(false);
+        evioFaultButton.  setEnabled(false);
+    }
+
+    /** Enable control buttons in preparation for jumping to file positions. */
+    private void enableControlsForPositionJump() {
+        enableControls();
+        searchButtonStart.setEnabled(false);
+        searchButtonStop. setEnabled(false);
+        searchButtonPrev. setEnabled(false);
+    }
+
+    /** Enable control buttons in preparation for jumping to file positions. */
+    private void enableControlsForEventJump() {
+        enableControls();
+        searchButtonStart.setEnabled(false);
+        searchButtonStop. setEnabled(false);
+    }
+
+    /** Enable control buttons in preparation for scrolling. */
+    private void enableControlsForScrolling() {
+        searchButtonStart.setText("<<");
+        searchButtonStop.setText(">>");
+
+        enableControls();
+    }
+
+    /** Enable control buttons for block jumping. */
+    private void enableControlsForBlock() {
+        searchButtonStop.setText("Stop");
+
+        enableControls();
+        searchButtonStart.setEnabled(false);
+        searchStringBox.setSelectedIndex(0);
+        searchStringBox.setEditable(false);
     }
 
     /** Enable all control buttons. */
     private void enableControls() {
-        searchButtonStop.setEnabled(true);
-        searchStringBox .setEnabled(true);
-        searchButtonNext.setEnabled(true);
-        searchButtonPrev.setEnabled(true);
-        wordValueButton. setEnabled(true);
-        wordIndexButton. setEnabled(true);
-        pageScrollButton.setEnabled(true);
-        evioBlockButton. setEnabled(true);
-        evioEventButton. setEnabled(true);
-        evioFaultButton. setEnabled(true);
+        // Search Box Buttons
+        searchButtonStart.setEnabled(true);
+        searchButtonStop. setEnabled(true);
+        searchStringBox . setEnabled(true);
+        searchButtonNext. setEnabled(true);
+        searchButtonPrev. setEnabled(true);
+
+        // Radio Buttons
+        wordValueButton.  setEnabled(true);
+        wordIndexButton.  setEnabled(true);
+        pageScrollButton. setEnabled(true);
+        evioBlockButton.  setEnabled(true);
+        evioEventButton.  setEnabled(true);
+        evioFaultButton.  setEnabled(true);
     }
 
 
@@ -1192,15 +1308,21 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
      * Update the panel showing an event's header info.
      * @param node object containing header info.
      */
-    private void updateEventInfoPanel(EvioScanner.EvioNode node) {
+    private void updateEventInfoPanel(EvioHeader node) {
         if (node == null || eventInfoPanel == null) return;
 
+        // Length
         ((JLabel)(eventInfoPanel.getComponent(1))).setText("" + ((long)node.len & 0xffffffffL));
+        // Tag
         ((JLabel)(eventInfoPanel.getComponent(3))).setText("0x" + Integer.toHexString(node.tag));
+        // Num
         ((JLabel)(eventInfoPanel.getComponent(5))).setText("" + node.num);
+        // Padding
         ((JLabel)(eventInfoPanel.getComponent(11))).setText("" + node.pad);
+        // Bank type
+        ((JLabel)(eventInfoPanel.getComponent(13))).setText("" + node.bankType);
 
-        // Catch bad types
+        // Catch bad Type
         String type;
         DataType nodeType = node.getTypeObj();
         if (nodeType == null) {
@@ -1212,7 +1334,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
         ((JLabel)(eventInfoPanel.getComponent(7))).setText("" + type);
 
-        // Catch bad data types
+        // Catch bad Data Type
         String dtype;
         DataType dataType = node.getDataTypeObj();
         if (dataType == null) {
@@ -1265,30 +1387,35 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
 
         eventInfoPanel = new JPanel();
-        eventInfoPanel.setLayout(new GridLayout(6,2,5,2));
+        eventInfoPanel.setLayout(new GridLayout(7,2,5,2));
         eventInfoPanel.setBorder(compound);
 
-        JLabel[] labels = new JLabel[12];
-        labels[0]  = new JLabel("Length");
-        labels[2]  = new JLabel("Tag");
-        labels[4]  = new JLabel("Num");
-        labels[6]  = new JLabel("Type");
-        labels[8]  = new JLabel("Data type");
-        labels[10] = new JLabel("Padding");
+        JLabel[] labels = new JLabel[14];
+        labels[0]  = new JLabel("Length  ");
+        labels[2]  = new JLabel("Tag  ");
+        labels[4]  = new JLabel("Num  ");
+        labels[6]  = new JLabel("Type  ");
+        labels[8]  = new JLabel("Data type  ");
+        labels[10] = new JLabel("Padding  ");
+        labels[12] = new JLabel("Bank Type  ");
 
         labels[1]  = new JLabel("");
         labels[3]  = new JLabel("");
         labels[5]  = new JLabel("");
         labels[7]  = new JLabel("");
         labels[9]  = new JLabel("");
-        labels[11]  = new JLabel("");
+        labels[11] = new JLabel("");
+        labels[13] = new JLabel("");
 
-        for (int i=0; i < 12; i++) {
+        for (int i=0; i < 14; i++) {
             labels[i].setOpaque(true);
             if (i%2 == 1) {
                 labels[i].setBackground(Color.white);
                 labels[i].setForeground(darkGreen);
                 labels[i].setBorder(blkLineBorder);
+            }
+            else {
+                labels[i].setHorizontalAlignment(SwingConstants.RIGHT);
             }
 
             eventInfoPanel.add(labels[i]);
@@ -1323,7 +1450,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
      * Method to update panel containing block header info.
      * @param header object containing block header info.
      */
-    private void updateBlockInfoPanel(EvioScanner.BlockHeader header) {
+    private void updateBlockInfoPanel(BlockHeader header) {
         if (header == null || blockInfoPanel == null) return;
 
         ((JLabel)(blockInfoPanel.getComponent(1))).setText(""  + header.len);
@@ -1378,13 +1505,13 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         blockInfoPanel.setBorder(compound);
 
         JLabel[] labels = new JLabel[14];
-        labels[0]  = new JLabel("Total words");
-        labels[2]  = new JLabel("Header words");
-        labels[4]  = new JLabel("Id number");
-        labels[6]  = new JLabel("Event count");
-        labels[8]  = new JLabel("Version");
-        labels[10] = new JLabel("Has dictionary");
-        labels[12] = new JLabel("Is last");
+        labels[0]  = new JLabel("Total words  ");
+        labels[2]  = new JLabel("Header words  ");
+        labels[4]  = new JLabel("Id number  ");
+        labels[6]  = new JLabel("Event count  ");
+        labels[8]  = new JLabel("Version  ");
+        labels[10] = new JLabel("Has dictionary  ");
+        labels[12] = new JLabel("Is last  ");
 
         labels[1]  = new JLabel("");
         labels[3]  = new JLabel("");
@@ -1401,6 +1528,9 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                 labels[i].setForeground(darkGreen);
                 labels[i].setBorder(blkLineBorder);
             }
+            else {
+                labels[i].setHorizontalAlignment(SwingConstants.RIGHT);
+            }
 
             blockInfoPanel.add(labels[i]);
         }
@@ -1413,33 +1543,58 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
     }
 
 
-    /** Add a panel showing evio faults in the data to gui. */
-    private void addEvioFaultPanel(ErrorTask errorTask) {
-
-        if (evioFaultsFound) {
+    /**  Method to remove panel containing error info from gui. */
+    private void removeEvioFaultPanel() {
+        if (errorPanel == null) {
             return;
         }
 
-        // If no scan for faults has been done, do it now
-        if (evioFaultScanner == null) {
-            evioFaultScanner = new EvioScanner(mappedMemoryHandler, errorTask);
+        Component[] comps = controlPanel.getComponents();
+        for (int i=0; i < comps.length; i++) {
+            if (comps[i] == errorPanel) {
+                 // Need to remove both the block info panel
+                controlPanel.remove(i);
+                // and the vertical strut before it
+                controlPanel.remove(i-1);
+            }
         }
 
-        evioFaultsFound = true;
+        controlPanel.revalidate();
+        controlPanel.repaint();
+        errorPanel = null;
+    }
+
+
+    /** Add a panel showing evio faults in the data to gui. */
+    private void addEvioFaultPanel(ErrorScanTask errorTask) {
+
+        // If no scan for faults has been done, do it now
+        if (evioFaultScanner == null) {
+            evioFaultScanner = new EvioScanner(this,
+                                               dataTableModel,
+                                               dataTableRenderer,
+                                               errorTask);
+        }
+
+        if (isScanned) {
+            removeEvioFaultPanel();
+        }
+
+        scannedDataOrder = order;
+        isScanned = true;
 
         try {
             evioFaultScanner.scanFileForErrors();
         }
         catch (Exception e) {
-            e.printStackTrace();
             return;
         }
 
         if (!evioFaultScanner.hasError()) {
-            setMessage("No errors found", darkGreen);
+            setMessage("No errors found", darkGreen,null);
             return;
         }
-        setMessage("Errors found", Color.red);
+        setMessage("Errors found", Color.red, null);
 
         faultRadioGroup = new ButtonGroup();
 
@@ -1450,9 +1605,11 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                           TitledBorder.CENTER,
                           TitledBorder.TOP, null, Color.blue);
 
-        JPanel errorPanel = new JPanel();
+        errorPanel = new JPanel();
         errorPanel.setBorder(compound);
         errorPanel.setLayout(new BorderLayout(0, 10));
+        errorPanel.setMinimumSize(new Dimension(controlPanelWidth, 180));
+        errorPanel.setPreferredSize(new Dimension(controlPanelWidth, 180));
 
 
         // Blocks & events containing evio errors are placed in a list.
@@ -1466,66 +1623,44 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
             public void mouseClicked(MouseEvent e) {
                 // Parse the action command
-                String actionCmd = faultRadioGroup.getSelection().getActionCommand();
+                ButtonModel sel = faultRadioGroup.getSelection();
+                if (sel == null) return;
+                String actionCmd = sel.getActionCommand();
                 String[] strings = actionCmd.split(":");
                 int index = Integer.parseInt(strings[1]);
                 boolean isBlock = strings[0].equals("B");
 
-                if (isBlock) {
-                    EvioScanner.BlockHeader header = evioFaultScanner.getBlockErrorNodes().get(index);
-                    setMessage(header.error, Color.red);
-                    scrollToIndex(header.filePos / 4, null);
-                    setSliderPosition();
-                    removeEventInfoPanel();
-                    addBlockInfoPanel();
-                    updateBlockInfoPanel(header);
-                }
-                else {
-                    EvioScanner.EvioNode node = evioFaultScanner.getEventErrorNodes().get(index);
-                    setMessage(" ", null);
-                    setMessage(node.error, Color.red);
-                    scrollToIndex(node.getFilePosition()/4, null);
-                    setSliderPosition();
-                    removeBlockInfoPanel();
-                    addEventInfoPanel();
-                    updateEventInfoPanel(node);
-                }
-
+                currentBlockHeader = evioFaultScanner.getBlockErrorNodes().get(index);
+                // Want forward button to be 0 when index incremented
+                currentBlockHeader.currentEventIndex = -1;
+                setMessage(currentBlockHeader.error, Color.red, null);
+                scrollToIndex(currentBlockHeader.filePos / 4, null, false);
+                setSliderPosition();
+                removeEventInfoPanel();
+                addBlockInfoPanel();
+                updateBlockInfoPanel(currentBlockHeader);
             }
 
         };
 
         // Lists of blocks & events containing evio errors
-        ArrayList<EvioScanner.EvioNode>  events = evioFaultScanner.getEventErrorNodes();
-        ArrayList<EvioScanner.BlockHeader> blocks = evioFaultScanner.getBlockErrorNodes();
+        ArrayList<BlockHeader> blocks = evioFaultScanner.getBlockErrorNodes();
 
         int blockCount = blocks.size();
-        int eventCount = events.size();
 
         // Create a radio button for each fault/error
-        faultButtons = new JRadioButton[blockCount + eventCount];
-
-        JPanel faultPanel = new JPanel();
-        faultPanel.setLayout(new GridLayout(0, 1, 10, 5));
+        faultButtons = new JRadioButton[blockCount];
 
         // Model for JList below
         DefaultListModel<JRadioButton> model = new DefaultListModel<JRadioButton>();
 
         for (int i=0; i < blockCount; i++) {
-            EvioScanner.BlockHeader blockHeader = blocks.get(i);
+            BlockHeader blockHeader = blocks.get(i);
             // Reported number is word position which starts at 1
-            faultButtons[i] = new JRadioButton("Block # " + blockHeader.place);
+            faultButtons[i] = new JRadioButton("Block " + blockHeader.place);
             faultButtons[i].setActionCommand("B:" + i);
             faultRadioGroup.add(faultButtons[i]);
             // Put button in list
-            model.addElement(faultButtons[i]);
-        }
-
-        for (int i=blockCount; i < eventCount + blockCount; i++) {
-            EvioScanner.EvioNode evNode = events.get(i - blockCount);
-            faultButtons[i] = new JRadioButton("Event #" + evNode.place);
-            faultButtons[i].setActionCommand("E:" + (i - blockCount));
-            faultRadioGroup.add(faultButtons[i]);
             model.addElement(faultButtons[i]);
         }
 
@@ -1553,10 +1688,122 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         errorPanel.add(jsp);
 
         // Add to control panel
-        controlPanel.add(Box.createVerticalStrut(10));
-        controlPanel.add(errorPanel);
+        controlPanel.add(Box.createVerticalStrut(10), 6);
+        controlPanel.add(errorPanel, 7);
         controlPanel.revalidate();
         controlPanel.repaint();
+    }
+
+
+    private void scanBlockErrorEventsBack() {
+        // Get BlockHeader set in mouseClick routine above
+        if (currentBlockHeader == null) return;
+        if (--currentBlockHeader.currentEventIndex < 0)  currentBlockHeader.currentEventIndex = 0;
+        EvioHeader header = currentBlockHeader.events.get(currentBlockHeader.currentEventIndex);
+
+        if (header == null) {
+            //System.out.println("No event going backward");
+            return;
+        }
+
+        if (header.error != null) {
+            setMessage(header.error, Color.red, null);
+            scrollToIndex(header.getFilePosition() / 4, highlightEvntHdrErr, true);
+        }
+        else {
+            setMessage("", null, null);
+            scrollToIndex(header.getFilePosition() / 4, highlightEvntHdr, true);
+        }
+        setSliderPosition();
+        addEventInfoPanel();
+        updateEventInfoPanel(header);
+    }
+
+
+    private void scanBlockErrorEventsForward() {
+        // Get BlockHeader set in mouseClick routine above
+        if (currentBlockHeader == null) return;
+        int maxIndex = currentBlockHeader.events.size() - 1;
+        if (maxIndex < 0) {
+            return;
+        }
+
+        if (++currentBlockHeader.currentEventIndex > maxIndex) {
+            currentBlockHeader.currentEventIndex = maxIndex;
+        }
+        EvioHeader header = currentBlockHeader.events.get(currentBlockHeader.currentEventIndex);
+
+        if (header == null) {
+            //System.out.println("No event going forward");
+            return;
+        }
+
+        if (header.error != null) {
+            setMessage(header.error, Color.red, null);
+            scrollToIndex(header.getFilePosition() / 4, highlightEvntHdrErr, true);
+        }
+        else {
+            setMessage("", null, null);
+            scrollToIndex(header.getFilePosition() / 4, highlightEvntHdr, true);
+        }
+        setSliderPosition();
+        addEventInfoPanel();
+        updateEventInfoPanel(header);
+    }
+
+
+    /** Add a panel showing highlight color key. */
+    private void addKeyPanel() {
+
+        // Put browsing buttons into panel
+        JPanel keyPanel = new JPanel();
+        keyPanel.setLayout(new BorderLayout());
+        Border border = new CompoundBorder(
+                BorderFactory.createEtchedBorder(EtchedBorder.LOWERED),
+                new EmptyBorder(5, 5, 5, 5));
+        keyPanel.setBorder(border);
+
+        Border blkLineBorder = BorderFactory.createLineBorder(Color.gray);
+        Border lineBorder = BorderFactory.createLineBorder(Color.blue);
+        Border compound = BorderFactory.createCompoundBorder(lineBorder, null);
+        compound = BorderFactory.createTitledBorder(
+                          compound, "Color Key",
+                          TitledBorder.CENTER,
+                          TitledBorder.TOP, null, Color.blue);
+
+
+        JPanel keyInfoPanel = new JPanel();
+        keyInfoPanel.setLayout(new GridLayout(7,1,5,2));
+        keyInfoPanel.setBorder(compound);
+
+
+        JLabel[] labels = new JLabel[7];
+        labels[0]  = new JLabel("Block normal");
+        labels[1]  = new JLabel("Event normal");
+        labels[2]  = new JLabel("Block with error");
+        labels[3]  = new JLabel("Event with error");
+        labels[4]  = new JLabel("Evio struct error");
+        labels[5]  = new JLabel("Word value");
+        labels[6]  = new JLabel("Current selection");
+
+        labels[0].setBackground(highlightBlkHdr);
+        labels[1].setBackground(highlightEvntHdr);
+        labels[2].setBackground(highlightBlkHdrErr);
+        labels[3].setBackground(highlightEvntHdrErr);
+        labels[4].setBackground(highlightNodeErr);
+        labels[5].setBackground(highlightValue);
+        labels[6].setBackground(Color.yellow);
+
+        for (int i=0; i < 7; i++) {
+            labels[i].setOpaque(true);
+            labels[i].setBorder(blkLineBorder);
+            keyInfoPanel.add(labels[i]);
+        }
+
+        // Add to control panel
+        keyPanel.add(keyInfoPanel, BorderLayout.NORTH);
+
+        this.add(keyPanel, BorderLayout.EAST);
     }
 
 
@@ -1587,9 +1834,10 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                           TitledBorder.TOP, null, Color.blue);
 
         JPanel radioButtonPanel = new JPanel();
-        radioButtonPanel.setLayout(new GridLayout(6, 1, 0, 4));
-        radioButtonPanel.setMinimumSize(new Dimension(200, 200));
-        radioButtonPanel.setPreferredSize(new Dimension(200, 200));
+        radioButtonPanel.setLayout(new GridLayout(6, 1, 0, 2));
+        // The next 2 call determine width of containControlPanel
+        radioButtonPanel.setMinimumSize(new Dimension(controlPanelWidth, 170));
+        radioButtonPanel.setPreferredSize(new Dimension(controlPanelWidth, 170));
         radioButtonPanel.setBorder(compound);
 
         // Create the radio buttons
@@ -1646,51 +1894,42 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                 switch (cmd) {
                     case 1:
                         // Word Value
-                        enableControls();
-                        searchButtonNext.setText(" > ");
+                        enableSearchControls();
+                        searchButtonStart.setEnabled(false);
                         searchStringBox.setEditable(true);
                         removeEventInfoPanel();
                         removeBlockInfoPanel();
                         break;
                     case 2:
                         // Word Index
-                        setControlsForPositionJump();
-                        searchButtonNext.setText("Go");
+                        enableControlsForPositionJump();
                         searchStringBox.setEditable(true);
                         removeEventInfoPanel();
                         removeBlockInfoPanel();
                         break;
                     case 3:
                         // Page Scrolling
-                        setControlsForScrolling();
-                        searchButtonNext.setText(" > ");
+                        enableControlsForScrolling();
                         searchStringBox.setEditable(false);
                         removeEventInfoPanel();
                         removeBlockInfoPanel();
                         break;
                     case 4:
                         // Evio Block
-                        enableControls();
-                        searchButtonNext.setText(" > ");
+                        enableControlsForBlock();
                         // Only search for 0xc0da0100
-                        searchStringBox.setSelectedIndex(0);
-                        searchStringBox.setEditable(false);
                         removeEventInfoPanel();
                         break;
                     case 5:
                         // Evio Event
-                        setControlsForPositionJump();
-                        searchButtonNext.setText(" > ");
+                        enableControlsForEventJump();
                         searchStringBox.setSelectedIndex(0);
                         searchStringBox.setEditable(false);
                         removeBlockInfoPanel();
                         break;
                     case 6:
                         // Evio Fault
-                        enableControls();
-                        searchButtonPrev.setEnabled(false);
-                        searchButtonNext.setText("Scan");
-                        searchStringBox.setEditable(false);
+                        setControlsForErrorScan();
                         break;
                     default:
                 }
@@ -1802,8 +2041,8 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                         break;
                     case 3:
                         // Page Scrolling
-                        setMessage(" ", null);
-                        scrollToVisible(false);
+                        setMessage(" ", null, null);
+                        scrollToVisible(false, 1);
                         setSliderPosition();
                         break;
                     case 4:
@@ -1812,15 +2051,24 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                         break;
                     case 5:
                         // Evio Event
+                        EvioHeader node = handleEventSearchBack();
+                        if (node == null) {
+                            // Error
+                            break;
+                        }
+                        addEventInfoPanel();
+                        updateEventInfoPanel(node);
+                        setSliderPosition();
+                        break;
                     case 6:
                         // Evio Fault
+                        scanBlockErrorEventsBack();
                         break;
                     default:
                 }
             }
         };
         searchButtonPrev.addActionListener(al_search);
-        searchButtonPrev.setPreferredSize(new Dimension(80, 25));
         searchButtonPanel.add(searchButtonPrev);
 
         searchButtonNext = new JButton(" > ");
@@ -1844,8 +2092,8 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                         break;
                     case 3:
                         // Page Scrolling
-                        setMessage(" ", null);
-                        scrollToVisible(true);
+                        setMessage(" ", null, null);
+                        scrollToVisible(true, 1);
                         setSliderPosition();
                         break;
                     case 4:
@@ -1854,33 +2102,31 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                         break;
                     case 5:
                         // Evio Event
+                        EvioHeader node = handleEventSearchForward();
+                        if (node == null) {
+                            // Error
+                            break;
+                        }
 
-                        // Selection used for starting point (event) from which
-                        // to find next event, so make it as an event
-                        dataTableModel.highListCell(Color.blue, lastSearchedRow, lastSearchedCol);
-
-                        EvioScanner.EvioNode node = handleEventSearch();
                         addEventInfoPanel();
                         updateEventInfoPanel(node);
                         setSliderPosition();
                         break;
                     case 6:
                         // Evio Fault
-                        handleErrorSearch();
+                        scanBlockErrorEventsForward();
                         break;
                     default:
                 }
             }
         };
         searchButtonNext.addActionListener(al_searchNext);
-        searchButtonNext.setPreferredSize(new Dimension(80, 25));
         searchButtonPanel.add(searchButtonNext);
 
         searchPanel.add(searchButtonPanel);
 
-
         JPanel progressButtonPanel = new JPanel();
-        progressButtonPanel.setLayout(new GridLayout(2, 1, 0, 3));
+        progressButtonPanel.setLayout(new GridLayout(1, 2, 3, 0));
 
         // Progress bar defined
         progressBar = new JProgressBar(0, 100);
@@ -1891,15 +2137,76 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         ActionListener al_searchStop = new ActionListener() {
             public void actionPerformed(ActionEvent e) {
                 stopSearch = true;
+
+                int cmd = Integer.parseInt(radioGroup.getSelection().getActionCommand());
+
+                switch (cmd) {
+                    case 1:
+                        // Word Value
+                    case 2:
+                        // Word Index
+                    case 3:
+                        // Page Scrolling
+                        setMessage(" ", null, null);
+                        scrollToVisible(true, 40);
+                        setSliderPosition();
+                        break;
+                    case 4:
+                    case 5:
+                        // Evio Event
+                        break;
+                    case 6:
+                        // Evio Fault
+                        //removeEvioFaultPanel();
+                        break;
+                    default:
+                }
             }
         };
         searchButtonStop.addActionListener(al_searchStop);
 
+        searchButtonStart = new JButton("Start Scan");
+        ActionListener al_searchStart = new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                stopSearch = false;
+                progressBar.setValue(0);
+                progressBar.setString(null);
+
+                int cmd = Integer.parseInt(radioGroup.getSelection().getActionCommand());
+
+                switch (cmd) {
+                    case 1:
+                        // Word Value
+                    case 2:
+                        // Word Index
+                    case 3:
+                        // Page Scrolling
+                        setMessage(" ", null, null);
+                        scrollToVisible(false, 40);
+                        setSliderPosition();
+                        break;
+                    case 4:
+                    case 5:
+                        // Evio Event
+                        break;
+                    case 6:
+                        // Evio Fault
+                        handleErrorSearch();
+                        break;
+                    default:
+                }
+            }
+        };
+        searchButtonStart.addActionListener(al_searchStart);
+        searchButtonStart.setEnabled(false);
+
+        progressButtonPanel.add(searchButtonStart);
         progressButtonPanel.add(searchButtonStop);
-        progressButtonPanel.add(progressBar);
 
         searchPanel.add(Box.createVerticalStrut(3));
         searchPanel.add(progressButtonPanel);
+        searchPanel.add(Box.createVerticalStrut(3));
+        searchPanel.add(progressBar);
 
         controlPanel.add(Box.createVerticalStrut(10));
         controlPanel.add(searchPanel);
@@ -1919,6 +2226,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         fileNameLabel.setHorizontalAlignment(SwingConstants.CENTER);
 
         messageLabel = new JLabel(" ");
+        messageLabel.setOpaque(true);
         messageLabel.setBorder(border);
         messageLabel.setForeground(Color.red);
         messageLabel.setHorizontalAlignment(SwingConstants.CENTER);
@@ -1953,6 +2261,8 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         dataTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         dataTable.setCellSelectionEnabled(true);
         dataTable.setSelectionBackground(Color.yellow);
+        // Cannot allow re-ordering of data !!!
+        dataTable.getTableHeader().setReorderingAllowed(false);
 
         // Start searching from mouse-clicked cell
         dataTable.addMouseListener(
@@ -1970,15 +2280,18 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 //                   ", col = " + lastSearchedCol);
 
                         // If we're looking for events ...
-                        if (evioEventButton.isSelected()) {
+                        if (dataTableModel.isDataColumn(lastSearchedCol) &&
+                            evioEventButton.isSelected()) {
                             // Display current selection as if it is start of bank
 
                             // Transform row & col into absolute index
-                            long wordIndex = dataTableModel.getWordIndexOf(lastSearchedRow,lastSearchedCol);
+                            long wordIndex = dataTableModel.getWordIndexOf(lastSearchedRow,
+                                                                           lastSearchedCol);
 
                             // Parse this & next word as bank header
-                            EvioScanner.EvioNode node = new EvioScanner.EvioNode((int)(dataTableModel.getLongValueAt(wordIndex)),
-                                                                                 (int)(dataTableModel.getLongValueAt(wordIndex + 1)));
+                            EvioHeader node =
+                                    new EvioHeader((int)(dataTableModel.getLongValueAt(wordIndex)),
+                                                                (int)(dataTableModel.getLongValueAt(wordIndex + 1)));
                             // Display
                             addEventInfoPanel();
                             updateEventInfoPanel(node);
@@ -2019,7 +2332,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
      *  (last one is probably smaller than that since file size is probably
      *  not an exact multiple of 200MB).
      *  A single map is loaded into the table at any one time. */
-    private final class MyTableModel extends AbstractTableModel {
+    final class MyTableModel extends AbstractTableModel {
 
         /** Offset in bytes from beginning of file to
          * beginning of map currently being viewed. */
@@ -2043,16 +2356,14 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         /** Number of bytes in each table row. */
         private final int bytesPerRow = 20;
 
-        // # of rows/map (1 map = 1 window) (200 MB/map max)
+        /** Max number of bytes per memory map. */
+        private final long maxMapByteSize;
 
         /** Max number of rows per memory map. */
-        private final int  maxRowsPerMap  = 10000000;
-
-        /** Max number of bytes per memory map. */
-        private final long maxMapByteSize = 200000000L;
+        private final int  maxRowsPerMap;
 
         /** Max number of words (32 bit ints) per memory map. */
-        private final long maxWordsPerMap = maxRowsPerMap * wordsPerRow;
+        private final long maxWordsPerMap;
 
         /** Total number of rows currently in table. */
         private long totalRows;
@@ -2070,15 +2381,34 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
             // Min file size = 4 bytes
             maxWordIndex = (fileSize-4L)/4L;
             mapCount = mappedMemoryHandler.getMapCount();
+            maxMapByteSize = mappedMemoryHandler.getMaxMapSize();
+            maxWordsPerMap = maxMapByteSize/4;
+            maxRowsPerMap  = (int) (maxWordsPerMap/wordsPerRow);
         }
+
+        /**
+         * Get the size of the file in bytes.
+         * @return size of the file in bytes.
+         */
+        public long getFileSize() { return fileSize; }
+
+        /**
+         * Get the mapped memory handler object.
+         * @return mapped memory handler object.
+         */
+        public SimpleMappedMemoryHandler getMemoryHandler() { return mappedMemoryHandler; }
+
+        /**
+         * Get the size of the file in bytes.
+         * @return size of the file in bytes.
+         */
+        public ByteOrder order() { return mappedMemoryHandler.getOrder(); }
 
         /**
          * Get the max # of rows per map.
          * @return max # of rows per map.
          */
-        public int getMaxRowsPerMap() {
-            return maxRowsPerMap;
-        }
+        public int getMaxRowsPerMap() { return maxRowsPerMap; }
 
         /**
          * Get the # of memory maps.
@@ -2102,6 +2432,20 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
             }
 
             return totalRows;
+        }
+
+        /**
+         * Get the percentage (or progress) of the way through the file that the given row is.
+         * @param currentRow the current row in current map (starting at 0)
+         * @return percentage of the way through the file that the given row is.
+         */
+        public int getRowProgress(int currentRow) {
+            long rowFromBeginning = mapIndex*maxRowsPerMap + currentRow;
+            int percent = (int) (100 * rowFromBeginning/getTotalRows());
+            //if (rowFromBeginning % 1000000 == 0)
+            //    System.out.println(rowFromBeginning + "," + getTotalRows() + ", " + percent);
+            if (percent > 100) return 100;
+            return percent;
         }
 
         /**
@@ -2150,6 +2494,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
          * @param mi index of the desired memory map.
          */
         public void setMapIndex(int mi) {
+            if (mi == mapIndex) return;
             mapIndex = mi;
             wordOffset = mapIndex*maxWordsPerMap;
             fireTableDataChanged();
@@ -2157,6 +2502,15 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
         /** Refresh view of table. */
         public void dataChanged() {fireTableDataChanged();}
+
+        /**
+         * Is the given column one which contains data or not?
+         * @param col column index
+         * @return true if col contains data, else false
+         */
+        public boolean isDataColumn(int col) {
+            return  (col > 0 && col < getColumnCount() - 1);
+        }
 
         /**
          * Set the table's data to the map containing the given word
@@ -2200,13 +2554,89 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
         /**
          * Highlight the given row & col entry, then refresh view.
-         * @param color color of highlight
-         * @param row
-         * @param col
+         * @param color   color of highlight
+         * @param row     row
+         * @param col     column
+         * @param isError true if highlighting an error
          */
-        public void highListCell(Color color, int row, int col) {
-            dataTableRenderer.setHighlightCell(color, row, col);
+        public void highLightCell(Color color, int row, int col, boolean isError) {
+            dataTableRenderer.setHighlightCell(color, row, col, isError);
             fireTableCellUpdated(row, col);
+        }
+
+        /**
+         * Highlight an event header. The given row & col are for
+         * the first word of the header. Refresh view.
+         * @param color   color of highlight
+         * @param row     row
+         * @param col     column
+         * @param isError true if highlighting an error
+         */
+        public void highLightEventHeader(Color color, int row, int col, boolean isError) {
+            // Highlight starting point
+            dataTableRenderer.setHighlightCell(color, row, col, isError);
+            fireTableCellUpdated(row, col);
+            // Also highlight the next (tag/num) header word, but
+            // not if we're starting at pos = 0, col 0
+            if (col != 0) {
+                long pos  = dataTableModel.getWordIndexOf(row, col);
+                int[] mrc = dataTableModel.getMapRowCol(pos + 1);
+                if (mrc == null) return;
+                setMapIndex(mrc[0]);
+                dataTableRenderer.setHighlightCell(color, mrc[1], mrc[2], isError);
+                fireTableCellUpdated(mrc[1], mrc[2]);
+            }
+        }
+
+        /**
+         * Highlight a block header. The given row & col are for
+         * the last (magic #) word of the header. Refresh view.
+         * @param color   color of highlight
+         * @param row     row
+         * @param col     column
+         * @param isError true if highlighting an error
+         * @return int array containing all the block header values; null if error
+         */
+        public int[] highLightBlockHeader(Color color, int row, int col, boolean isError) {
+
+            int[] blockData = new int[8];
+            long index = dataTableModel.getWordIndexOf(row,col);
+
+            for (int i=0; i<8; i++) {
+                blockData[7-i] = (int)dataTableModel.getLongValueAt(index - i);
+                int[] mrc = dataTableModel.getMapRowCol(index - i);
+                if (mrc == null) return null;
+                setMapIndex(mrc[0]);
+                dataTableRenderer.setHighlightCell(color, mrc[1], mrc[2], isError);
+                fireTableCellUpdated(mrc[1], mrc[2]);
+            }
+            return  blockData;
+        }
+
+        /**
+         * Enter block header position into highlight hashmap for future highlighting.
+         * The given position is for the first word of the header.
+         * @param color   color of highlight
+         * @param pos     byte index of beginning of block header
+         * @param isError true if highlighting an error
+         */
+        public void highLightBlockHeader(Color color, long pos, boolean isError) {
+            for (int i=0; i<8; i++) {
+                dataTableRenderer.setHighlightCell(color, pos + 4*i, isError);
+            }
+        }
+
+        /**
+         * Enter event header position into highlight hashmap for future highlighting.
+         * The given position is for the first word of the header.
+         * @param color   color of highlight
+         * @param pos     byte index of beginning of event header
+         * @param isError true if highlighting an error
+         */
+        public void highLightEventHeader(Color color, long pos, boolean isError) {
+            for (int i=0; i<2; i++) {
+                dataTableRenderer.setHighlightCell(color, pos + 4*i, isError);
+            }
         }
 
         /** Clear all highlights and refresh view. */
@@ -2282,16 +2712,55 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         }
 
         /**
-         * Get the word value at the given file word index.
-         * @param index file word index.
-         * @return word value
+         * Get the long value at the given file word index.
+         * @param wordIndex file word index.
+         * @return long value
          */
-        public long getLongValueAt(long index) {
-            if (index < 0 || index > maxWordIndex) {
+        public long getLongValueAt(long wordIndex) {
+            if (wordIndex < 0 || wordIndex > maxWordIndex) {
                 return 0;
             }
 
-            return (((long)mappedMemoryHandler.getInt(index)) & 0xffffffffL);
+            return (((long)mappedMemoryHandler.getInt(wordIndex)) & 0xffffffffL);
+        }
+
+        /**
+         * Get the int value at the given file byte index.
+         * @param byteIndex file byte index.
+         * @return int value
+         */
+        public int getInt(long byteIndex) {
+            if (byteIndex < 0 || byteIndex > fileSize - 1) {
+                return 0;
+            }
+
+            return (mappedMemoryHandler.getIntAtBytePos(byteIndex));
+        }
+
+        /**
+         * Get the short value at the given file byte index.
+         * @param byteIndex file byte index.
+         * @return short value
+         */
+        public int getShort(long byteIndex) {
+            if (byteIndex < 0 || byteIndex > fileSize - 1) {
+                return 0;
+            }
+
+            return (mappedMemoryHandler.getShortAtBytePos(byteIndex));
+        }
+
+        /**
+         * Get the byte value at the given file byte index.
+         * @param byteIndex file byte index.
+         * @return byte value
+         */
+        public int get(long byteIndex) {
+            if (byteIndex < 0 || byteIndex > fileSize - 1) {
+                return 0;
+            }
+
+            return (mappedMemoryHandler.getByteAtBytePos(byteIndex));
         }
 
         /**
@@ -2338,14 +2807,26 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
 
     /** Renderer used to change background color every Nth row and to highlight cells. */
-    final private class MyRenderer extends DefaultTableCellRenderer {
+    final class MyRenderer extends DefaultTableCellRenderer {
         private int   nthRow;
-        private Color alternateRowColor  = new Color(235, 245, 255);
-        private Color newForegroundColor = Color.red;
+        private Color alternateRowColor = new Color(235, 245, 255);
 
-        // Keep track of which cells have been highlighted.
-        // 1st object is int (map), 2nd is int (row), 3rd is int (col), 4th is Color
-        private final ArrayList<Object[]> highlightCells = new ArrayList<Object[]>(20);
+        /**
+         * Keep track of which cells have been highlighted.
+         * Key is a long in which highest 16 bits are map index,
+         * next 32 bits are the row, and lowest 16 bits are the column.
+         * Thus a map/row/col input can be quickly computed to the map's key
+         * and the color can be quickly found.
+         * Value object is the Color object for the given long (map/row/col).
+         */
+        private final HashMap<Long,Color> highlightCells  = new HashMap<Long,Color>(100);
+
+        /**
+         * Keep track of which cells have been highlighted as containing errors.
+         * These have priority over the regular highlighting.
+         */
+        private final HashMap<Long,Color> highlightErrors = new HashMap<Long,Color>(100);
+
 
         /** Constructor. */
         public MyRenderer(int nthRow) {
@@ -2353,40 +2834,84 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
             this.nthRow = nthRow;
         }
 
+
+        /** Clear the highlights from the list of highlighted items. */
+        public void clearHighlights() {
+            highlightCells.clear();
+            highlightErrors.clear();
+        }
+
+
+        /**
+         * Given a map index, row, and column, get the corresponding
+         * highlight hashmap key. This key is a long in which the highest
+         * 16 bits are the map index, the next 32 bits are the row,
+         * and the lowest 16 bits are the column.
+         * Thus a map/row/col input can be quickly computed to the map's key
+         * and the color can be quickly found.
+         *
+         * @param map  memory map index
+         * @param row  row
+         * @param col  column
+         * @return highlight hashmap index
+         */
+        private long getHighlightKey(int map, int row, int col) {
+            return (((long)map << 48) | ((long)row << 16) | col) & 0x0fff7fffffff00ffL;
+        }
+
+
         /**
          * Is the cell at the given row, column, and memory map highlighted?
-         * If so, return which color, else return null;
-         * @param map  index of memory map
+         * If so, return which color, else return null.
+         *
+         * @param map  memory map index
          * @param row  row
          * @param col  column
          * @return Color if highlighted, else null
          */
         private Color isHighlightCell(int map, int row, int col) {
-            for (Object[] cell : highlightCells) {
-                if ((Integer)cell[0] == map &&
-                    (Integer)cell[1] == row &&
-                    (Integer)cell[2] == col) {
-
-                    return (Color)cell[3];
-                }
+            Color err = highlightErrors.get(getHighlightKey(map, row, col));
+            if (err != null) {
+                return err;
             }
-            return null;
+            return highlightCells.get(getHighlightKey(map, row, col));
         }
 
-        /** Clear the highlights from the list of highlighted items. */
-        public void clearHighlights() {
-            highlightCells.clear();
-        }
 
         /**
          * Highlight the cell at the given row and column to the given color.
-         * @param color color to highlight
-         * @param row   row
-         * @param col   column
+         * @param color   color to highlight
+         * @param row     row
+         * @param col     column
+         * @param isError true if highlighting an error
          */
-        public void setHighlightCell(Color color, int row, int col) {
-            if (color == null) color = Color.red;
-            highlightCells.add(new Object[] {dataTableModel.getMapIndex(), row, col, color});
+        public void setHighlightCell(Color color, int row, int col, boolean isError) {
+            if (color == null) color = highlightBlkHdr;
+            if (isError) {
+                highlightErrors.put(getHighlightKey(dataTableModel.getMapIndex(), row, col), color);
+            }
+            else {
+                highlightCells.put(getHighlightKey(dataTableModel.getMapIndex(), row, col), color);
+            }
+        }
+
+
+        /**
+         * Highlight the cell at the given file byte position to the given color.
+         * @param color   color to highlight
+         * @param pos     file byte position
+         * @param isError true if highlighting an error
+         */
+        public void setHighlightCell(Color color, long pos, boolean isError) {
+            if (color == null) color = highlightBlkHdr;
+            int[] mrc = dataTableModel.getMapRowCol(pos/4);
+            if (mrc == null) return;
+            if (isError) {
+                highlightErrors.put(getHighlightKey(mrc[0], mrc[1], mrc[2]), color);
+            }
+            else {
+                highlightCells.put(getHighlightKey(mrc[0], mrc[1], mrc[2]), color);
+            }
         }
 
 
@@ -2397,10 +2922,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                                                        boolean isSelected, boolean hasFocus,
                                                        int row, int column) {
 
-            if (isSelected) {
-                super.setForeground(table.getSelectionForeground());
-                super.setBackground(table.getSelectionBackground());
-            } else {
+            if (!isSelected) {
                 super.setForeground(table.getForeground());
 
                 if ((row+1)%nthRow == 0) {
@@ -2411,9 +2933,17 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                 }
             }
 
+            // Highlighting has priority over regular background
             Color color = isHighlightCell(dataTableModel.getMapIndex(), row, column);
             if (color != null) {
-                super.setForeground(color);
+                super.setForeground(Color.black);
+                super.setBackground(color);
+            }
+
+            // Selection has priority over highlighting
+            if (isSelected) {
+                super.setForeground(table.getSelectionForeground());
+                super.setBackground(table.getSelectionBackground());
             }
 
             setFont(table.getFont());
@@ -2435,7 +2965,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 	 */
 	private void sizeToScreen(JFrame frame, double fractionalSize) {
 		Dimension d = Toolkit.getDefaultToolkit().getScreenSize();
-		d.width = (int) (fractionalSize * .6 * d.width);
+		d.width = (int) (fractionalSize * .7 * d.width);
 		d.height = (int) (fractionalSize * d.height);
 		frame.setSize(d);
 		centerComponent(frame);

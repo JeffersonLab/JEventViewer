@@ -44,12 +44,21 @@ public final class EvioHeader implements Cloneable {
     /** Data source that this node is associated with. */
     FileFrameBig.MyTableModel model;
 
+    /** For some applications it's nice to know the word index this event starts at. */
+    Long wordIndex;
+
     //-------------------------------
     // For event-level node
     //-------------------------------
 
     /** Place of containing event in file/buffer. First event = 0, second = 1, etc. */
     int place;
+
+    /**
+     * If this is an event, this contains the header in which an error
+     * has occurred if at a different evio level.
+     */
+    EvioHeader errorHeader;
 
     //----------------------------------
     // Constructors (package accessible)
@@ -63,7 +72,7 @@ public final class EvioHeader implements Cloneable {
      * @param word2  event's second header word
      */
     EvioHeader(int word1, int word2) {
-        len  = word1;
+        len  = word1 & 0xffffffffL;
         tag  = word2 >> 16 & 0xffff;
         num  = word2 & 0xff;
         pad  = word2 >> 14 & 0x3;
@@ -71,6 +80,19 @@ public final class EvioHeader implements Cloneable {
         // Assume we're hopping from bank to bank
         type = DataType.BANK.getValue();
         bankType = CodaBankTag.getDescription(tag);
+    }
+
+    /**
+     * Constructor which creates an EvioNode associated with
+     * an event (top level) and specifies its first word's file position.
+     *
+     * @param word1  event's first header word
+     * @param word2  event's second header word
+     * @param wordIndex index of word in file at which this event starts
+     */
+    EvioHeader(int word1, int word2, Long wordIndex) {
+        this(word1, word2);
+        this.wordIndex = wordIndex;
     }
 
     /**
@@ -96,6 +118,42 @@ public final class EvioHeader implements Cloneable {
     //-------------------------------
     // Methods
     //-------------------------------
+
+    /**
+     * When scanning for events, the user initially clicks on a first header word value.
+     * It may or may not be the first word of an evio bank.
+     * This method tells whether this object,
+     * created from those 2 words, is most likely a bank or is not.
+     *
+     * @return  true if it is most likely a bank, else false.
+     */
+    public boolean probablyIsBank() {
+        // if data type = 0 (Unknown32), probably not a bank
+        if (dataType == 0) {
+            return false;
+        }
+
+        // if can't recognize the data type, definitely not a bank
+        DataType dataTypeObj = DataType.getDataType(dataType);
+        if (dataTypeObj == null) {
+            return false;
+        }
+
+        // If padding does not match the data type, definitely not a bank
+        if (pad != 0) {
+            if (pad == 2) {
+                if (!EvioScanner.dataTypeHasPadding(dataTypeObj)) {
+                    return false;
+                }
+            }
+            else if ((dataTypeObj != DataType.CHAR8 &&
+                      dataTypeObj != DataType.UCHAR8)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     public Object clone() {
         try {

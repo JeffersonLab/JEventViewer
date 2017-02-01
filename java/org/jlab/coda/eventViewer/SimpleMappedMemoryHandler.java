@@ -21,8 +21,8 @@ public class SimpleMappedMemoryHandler {
     /** Size of file in bytes. */
     private long fileSize;
 
-    /** Max map size in bytes (200MB) */
-    private final long maxMapSize = 200000000L;
+    /** Max map size in bytes (2GB) */
+    private final long maxMapSize = 2000000000L;
 
     /** Byte order of data in buffer. */
     private ByteOrder order;
@@ -106,6 +106,13 @@ public class SimpleMappedMemoryHandler {
 
 
     /**
+     * Get the maximum byte size of each memory map (last one will be smaller).
+     * @return max byte size of each memory map.
+     */
+    public long getMaxMapSize() { return maxMapSize; }
+
+
+    /**
      * Get the file channel object.
      * @return file channel object.
      */
@@ -160,6 +167,13 @@ public class SimpleMappedMemoryHandler {
 
 
     /**
+     * Get the byte order of the data.
+     * @return byte order of the data.
+     */
+    public ByteOrder getOrder() { return order; }
+
+
+    /**
      * Get the indicated memory map.
      * @param mapIndex index into map holding memory mapped ByteBuffers
      * @return indicated memory map.
@@ -171,10 +185,11 @@ public class SimpleMappedMemoryHandler {
         return maps.get(mapIndex);
     }
 
+
     /**
-     * Get the value of the word in the file at the given index.
-     * @param wordIndex index of word
-     * @return value of word in file
+     * Get the int value in the file at the given word (4 byte) index.
+     * @param wordIndex word index into file
+     * @return int value in file at word index
      */
     public int getInt(long wordIndex) {
         int mapIndex  = (int) (wordIndex*4/maxMapSize);
@@ -182,6 +197,48 @@ public class SimpleMappedMemoryHandler {
         ByteBuffer buf = getMap(mapIndex);
         if (buf == null) return 0;
         return buf.getInt(byteIndex);
+    }
+
+
+    /**
+     * Get the int value in the file at the given byte index.
+     * @param bytePosition byte index into file
+     * @return int value in file at byte index
+     */
+    public int getIntAtBytePos(long bytePosition) {
+        int mapIndex  = (int) (bytePosition/maxMapSize);
+        int byteIndex = (int) (bytePosition - (mapIndex * maxMapSize));
+        ByteBuffer buf = getMap(mapIndex);
+        if (buf == null) return 0;
+        return buf.getInt(byteIndex);
+    }
+
+
+    /**
+     * Get the short value in the file at the given byte index.
+     * @param bytePosition byte index into file
+     * @return short value in file at byte index
+     */
+    public short getShortAtBytePos(long bytePosition) {
+        int mapIndex  = (int) (bytePosition/maxMapSize);
+        int byteIndex = (int) (bytePosition - (mapIndex * maxMapSize));
+        ByteBuffer buf = getMap(mapIndex);
+        if (buf == null) return 0;
+        return buf.getShort(byteIndex);
+    }
+
+
+    /**
+     * Get the byte value in the file at the given byte index.
+     * @param bytePosition byte index into file
+     * @return byte value in file at byte index
+     */
+    public byte getByteAtBytePos(long bytePosition) {
+        int mapIndex  = (int) (bytePosition/maxMapSize);
+        int byteIndex = (int) (bytePosition - (mapIndex * maxMapSize));
+        ByteBuffer buf = getMap(mapIndex);
+        if (buf == null) return 0;
+        return buf.get(byteIndex);
     }
 
 

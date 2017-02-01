@@ -15,6 +15,8 @@ import java.util.ArrayList;
  */
 public final class BlockHeader {
 
+    static int MAGIC_INT = 0xc0da0100;
+
     /** Block's length value (32-bit words). */
     long len;
     /** Block's header length value (32-bit words). */
@@ -36,6 +38,9 @@ public final class BlockHeader {
     boolean isLast;
     /** Contains description of any error in block's data. */
     String error;
+    /** The index into the "events" list of the element that
+      * is currently being looked at (starting at 0). */
+    int currentEventIndex;
 
     /** If error somewhere in this block, store reference to each contained event. */
     final ArrayList<EvioHeader> events = new ArrayList<EvioHeader>();
