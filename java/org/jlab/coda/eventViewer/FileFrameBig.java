@@ -39,7 +39,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
     /** Remember comments placed into 7th column of table. */
     private HashMap<Integer,String> comments = new HashMap<Integer,String>();
 
-    private TreeSet<Long> eventSet = new TreeSet<Long>();
+    /** Store results of forward event searches to enable backwards ones. */
     private TreeMap<Long,EvioHeader> eventMap = new TreeMap<Long,EvioHeader>();
 
     /** Look at file in big endian order by default. */
@@ -58,9 +58,6 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
     /** Was the data scanned for errors? */
     private volatile boolean isScanned;
-
-    /** Data endian when scanned for errors. */
-    private ByteOrder scannedDataOrder;
 
 
     private JPanel controlPanel;
@@ -106,7 +103,6 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
     // Widgets & members for fault searching
     private JRadioButton[] faultButtons;
     private ButtonGroup faultRadioGroup;
-    private boolean evioFaultsFound;
     private EvioScanner evioFaultScanner;
 
     // Panels to hold event & block header info
@@ -1056,7 +1052,6 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         }
 
         eventMap.put(wordIndex, node);
-        eventSet.add(wordIndex);
 
         //-----------------------------------------------
         // Move on to the next event
@@ -1103,7 +1098,6 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                               (int)(dataTableModel.getLongValueAt(wordIndex + 1)),
                               wordIndex);
         eventMap.put(wordIndex, node);
-        eventSet.add(wordIndex);
         return node;
     }
 
@@ -1580,7 +1574,6 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
             removeEvioFaultPanel();
         }
 
-        scannedDataOrder = order;
         isScanned = true;
 
         try {
