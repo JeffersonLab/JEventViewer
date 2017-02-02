@@ -120,12 +120,12 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
     /** Last row to be searched (rows start at 0). */
     private int lastSearchedRow = -1;
-    /** Last col to be searched (cols start at 1). */
+    /** Last col to be searched (data cols start at 1). */
     private int lastSearchedCol = 0;
 
     /** Last row to be found in a search (rows start at 0). */
     private int lastFoundRow = -1;
-    /** Last col to be found in a search (cols start at 1). */
+    /** Last col to be found in a search (data cols start at 1). */
     private int lastFoundCol = 0;
     /** Memory map (index) containing last item to be found in a search. */
     private int lastFoundMap;
@@ -2435,8 +2435,6 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         public int getRowProgress(int currentRow) {
             long rowFromBeginning = mapIndex*maxRowsPerMap + currentRow;
             int percent = (int) (100 * rowFromBeginning/getTotalRows());
-            //if (rowFromBeginning % 1000000 == 0)
-            //    System.out.println(rowFromBeginning + "," + getTotalRows() + ", " + percent);
             if (percent > 100) return 100;
             return percent;
         }
@@ -2664,7 +2662,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                 return "";
             }
 
-            // 1st column is row or integer #
+            // 1st column is wordIndex # just before 1st col
             if (col == 0) {
                 return String.format("%,d", (wordOffset + row*5));
             }
@@ -2779,7 +2777,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
         /** {@inheritDoc} */
         public boolean isCellEditable(int row, int col) {
-            return col > 1;
+            return col > 0;
         }
 
         /** {@inheritDoc} */
