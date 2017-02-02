@@ -28,7 +28,7 @@ public class BadFileGenerator {
         0x00000006,
         0x00010e01,   // tag=1, bank, num=1
             0x00000004,
-            0x00028102,   // tag=2, unsigned int, num=2
+            0x00028102,   // tag=2, unsigned int, num=2, type = UINT32 (1), pad = 2
             0x00000001,
             0x00000001,
             0x00000001,
