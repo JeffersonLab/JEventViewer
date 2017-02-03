@@ -21,8 +21,8 @@ public class SimpleMappedMemoryHandler {
     /** Size of file in bytes. */
     private long fileSize;
 
-    /** Max map size in bytes (2GB) */
-    private final long maxMapSize = 2000000000L;
+    /** Max map size in bytes (1GB) */
+    private final long maxMapSize = 1000000000L;
 
     /** Byte order of data in buffer. */
     private ByteOrder order;
