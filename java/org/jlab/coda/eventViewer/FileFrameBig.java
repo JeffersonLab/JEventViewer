@@ -952,7 +952,6 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
     /** Search for evio errors from beginning of file in background. */
     private void handleErrorSearch() {
-        stopSearch = false;
         searchDone = false;
 
         // Use swing worker thread to do time-consuming error scan in background
@@ -2144,25 +2143,11 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                 int cmd = Integer.parseInt(radioGroup.getSelection().getActionCommand());
 
                 switch (cmd) {
-                    case 1:
-                        // Word Value
-                    case 2:
-                        // Word Index
                     case 3:
                         // Page Scrolling
                         setMessage(" ", null, null);
                         scrollToVisible(true, 40);
                         setSliderPosition();
-                        break;
-                    case 4:
-                        // Block Search
-                    case 5:
-                        // Evio Event
-                        break;
-                    case 6:
-                        //System.out.println("HIT STOP for fault search");
-                        // Evio Fault
-                        //removeEvioFaultPanel();
                         break;
                     default:
                 }
@@ -2180,20 +2165,11 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                 int cmd = Integer.parseInt(radioGroup.getSelection().getActionCommand());
 
                 switch (cmd) {
-                    case 1:
-                        // Word Value
-                    case 2:
-                        // Word Index
                     case 3:
                         // Page Scrolling
                         setMessage(" ", null, null);
                         scrollToVisible(false, 40);
                         setSliderPosition();
-                        break;
-                    case 4:
-                        // BLock Search
-                    case 5:
-                        // Evio Event
                         break;
                     case 6:
                         // Evio Fault
