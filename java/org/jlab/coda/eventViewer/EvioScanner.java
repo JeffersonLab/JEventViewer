@@ -25,9 +25,6 @@ public class EvioScanner {
     /** Object for rendering file data in table. */
     private final FileFrameBig.MyRenderer dataRenderer;
 
-    /** Byte order of the file. */
-    private ByteOrder fileByteOrder;
-
     /** Reference to GUI component that creates this object. */
     private FileFrameBig parentComponent;
 
@@ -55,22 +52,19 @@ public class EvioScanner {
      * @param dataModel     object with file memory maps.
      * @param errorTask     object doing file scan in background,
      *                      use to update its progress.
+     * @throws EvioException if endianness is wrong, version is wrong,
+     *                       or too little data to read block header
      */
     public EvioScanner(FileFrameBig component,
                        FileFrameBig.MyTableModel dataModel,
                        FileFrameBig.MyRenderer dataRenderer,
-                       FileFrameBig.ErrorScanTask errorTask) {
+                       FileFrameBig.ErrorScanTask errorTask) throws EvioException {
         this.parentComponent = component;
         this.dataModel       = dataModel;
         this.dataRenderer    = dataRenderer;
-        this.errorScanTask = errorTask;
+        this.errorScanTask   = errorTask;
 
-        try {
-            readFirstHeader();
-        }
-        catch (EvioException e) {
-            e.printStackTrace();
-        }
+        checkFirstHeader();
     }
 
 
@@ -588,6 +582,7 @@ if (debug) System.out.println("Error 4: " + node.error);
             blockEventCount  = dataModel.getInt(bufPos + 4*BlockHeaderV4.EV_COUNT);
             magicNum         = dataModel.getInt(bufPos + 4*BlockHeaderV4.EV_MAGIC);
 
+//            System.out.println("Magic # = 0x" + Integer.toHexString(magicNum));
             // Store block header info in object
             blockNode           = new BlockHeader();
             blockNode.filePos   = bufPos;
@@ -615,11 +610,11 @@ if (debug) System.out.println("Error 4: " + node.error);
 
             // If magic # is not right, file is not in proper format
             if (magicNum != BlockHeaderV4.MAGIC_NUMBER) {
-                // If attempting to scan file in wrong endian, get user to switch
+                // If attempting to scan file in wrong endian, get usr eto switch
                 if (Integer.reverseBytes(magicNum) == BlockHeaderV4.MAGIC_NUMBER) {
                     blockErrorNodes.clear();
                     JOptionPane.showMessageDialog(parentComponent,
-                                                  "Try switching endianness in \"File\" menu",
+                                                  "Try switching data endian under \"File\" menu",
                                                   "Return", JOptionPane.INFORMATION_MESSAGE);
 
                     throw new EvioException("Switch endianness & try again");
@@ -820,51 +815,34 @@ if (debug) System.out.println("Error 4: " + node.error);
      * Reads the first block (physical record) header in order to determine
      * characteristics of the file or buffer in question. These things
      * do <b>not</b> need to be examined in subsequent block headers.
+     * ByteBuffer endianness needs to be set so visual data can
+     * be viewed properly.
      * File or buffer must be evio version 4 or greater.
      *
      * @throws EvioException if endianness or version is bad or too little data
      */
-    private void readFirstHeader() throws EvioException {
+    private void checkFirstHeader() throws EvioException {
 
         // Get first block header
         ByteBuffer byteBuffer = dataModel.getMemoryHandler().getFirstMap();
 
         // Have enough remaining bytes to read header?
         if (byteBuffer.limit() < 32) {
-            throw new EvioException("");
+            throw new EvioException("Too little data");
         }
 
-        // Set the byte order to match the file's ordering.
-
         // Check the magic number for endianness (buffer defaults to big endian)
-        ByteOrder byteOrder = byteBuffer.order();
-
         int magicNumber = byteBuffer.getInt(4*BlockHeaderV4.EV_MAGIC);
 
         if (magicNumber != IBlockHeader.MAGIC_NUMBER) {
-
-            if (byteOrder == ByteOrder.BIG_ENDIAN) {
-                byteOrder = ByteOrder.LITTLE_ENDIAN;
-            }
-            else {
-                byteOrder = ByteOrder.BIG_ENDIAN;
-            }
-            byteBuffer.order(byteOrder);
-
-            // Reread magic number to make sure things are OK
-            magicNumber = byteBuffer.getInt(4*BlockHeaderV4.EV_MAGIC);
-            if (magicNumber != IBlockHeader.MAGIC_NUMBER) {
-                throw new EvioException("Reread magic # (" + magicNumber + ") & still not right");
-            }
+            throw new EvioException("Try switching data endian under \"File\" menu");
         }
-
-        fileByteOrder = byteOrder;
 
         // Check the version number
         int bitInfo = byteBuffer.getInt(4*BlockHeaderV4.EV_VERSION);
         int evioVersion = bitInfo & 0xff;
         if (evioVersion < 4)  {
-            throw new EvioException("EvioCompactReader: unsupported evio version (" + evioVersion + ")");
+            throw new EvioException("unsupported evio version (" + evioVersion + ")");
         }
     }
 

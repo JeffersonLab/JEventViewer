@@ -3,6 +3,7 @@ package org.jlab.coda.eventViewer;
 
 import org.jlab.coda.jevio.BlockHeaderV4;
 import org.jlab.coda.jevio.DataType;
+import org.jlab.coda.jevio.EvioException;
 
 import javax.swing.*;
 import javax.swing.UIManager.LookAndFeelInfo;
@@ -190,8 +191,8 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         ActionListener al_switch = new ActionListener() {
             public void actionPerformed(ActionEvent e) {
                 setMessage(" ", null, null);
-                comments.clear();
-                dataTableModel.clearHighLights();
+                //comments.clear();
+                //dataTableModel.clearHighLights();
                 switchEndian();
 
                 // Reinstate selection of index (not search find)
@@ -929,6 +930,8 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
             }
             catch (NumberFormatException e) {
                 setMessage("Search input not a number: " + txt, Color.red, null);
+                // disable "Stop" button
+                searchButtonStop.setEnabled(false);
                 return;
             }
         }
@@ -1564,10 +1567,17 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
         // If no scan for faults has been done, do it now
         if (evioFaultScanner == null) {
-            evioFaultScanner = new EvioScanner(this,
-                                               dataTableModel,
-                                               dataTableRenderer,
-                                               errorTask);
+            try {
+                evioFaultScanner = new EvioScanner(this,
+                                                   dataTableModel,
+                                                   dataTableRenderer,
+                                                   errorTask);
+            }
+            catch (EvioException e) {
+                JOptionPane.showMessageDialog(this, e.getMessage(), "Return",
+                                              JOptionPane.INFORMATION_MESSAGE);
+                return;
+            }
         }
 
         if (isScanned) {
@@ -2145,10 +2155,12 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                         setSliderPosition();
                         break;
                     case 4:
+                        // Block Search
                     case 5:
                         // Evio Event
                         break;
                     case 6:
+                        //System.out.println("HIT STOP for fault search");
                         // Evio Fault
                         //removeEvioFaultPanel();
                         break;
@@ -2179,6 +2191,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                         setSliderPosition();
                         break;
                     case 4:
+                        // BLock Search
                     case 5:
                         // Evio Event
                         break;
@@ -2693,13 +2706,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                 return 0;
             }
 
-            long index = wordOffset + (row * 5) + col - 1;
-
-            if (index > maxWordIndex) {
-                return 0;
-            }
-
-            return (((long)mappedMemoryHandler.getInt(index)) & 0xffffffffL);
+            return (getLongValueAt(wordOffset + (row * 5) + col - 1));
         }
 
         /**
@@ -2914,8 +2921,6 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                                                        int row, int column) {
 
             if (!isSelected) {
-                super.setForeground(table.getForeground());
-
                 if ((row+1)%nthRow == 0) {
                     super.setBackground(alternateRowColor);
                 }
@@ -2927,13 +2932,11 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
             // Highlighting has priority over regular background
             Color color = isHighlightCell(dataTableModel.getMapIndex(), row, column);
             if (color != null) {
-                super.setForeground(Color.black);
                 super.setBackground(color);
             }
 
             // Selection has priority over highlighting
             if (isSelected) {
-                super.setForeground(table.getSelectionForeground());
                 super.setBackground(table.getSelectionBackground());
             }
 
