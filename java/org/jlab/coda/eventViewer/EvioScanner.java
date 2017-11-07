@@ -36,14 +36,14 @@ public class EvioScanner {
     /**
      * Is the given data type one that can have non-zero padding?
      * @param type evio data type
-     * @return {@code true} if the data type can have non-zero padding,
-     *         else {@code false}.
+     * @return {@code true} if the data type can have non-zero padding, else {@code false}.
      */
     static public boolean dataTypeHasPadding(DataType type) {
-        return type == DataType.CHAR8   ||
-               type == DataType.UCHAR8  ||
-               type == DataType.SHORT16 ||
-               type == DataType.USHORT16;
+        return type == DataType.CHAR8    ||
+               type == DataType.UCHAR8   ||
+               type == DataType.SHORT16  ||
+               type == DataType.USHORT16 ||
+               type == DataType.COMPOSITE;
     }
 
 
@@ -149,7 +149,8 @@ public class EvioScanner {
                 }
             }
             else if ((dataTypeObj != DataType.CHAR8 &&
-                      dataTypeObj != DataType.UCHAR8)) {
+                      dataTypeObj != DataType.UCHAR8 &&
+                      dataTypeObj != DataType.COMPOSITE)) {
                 node.error = "Padding (" + node.pad + ") does not match data type ("
                              + dataTypeObj + ")";
             }
@@ -235,7 +236,8 @@ if (debug) System.out.println("searchForErrorInEvent: place = " + place + ", buf
                 }
             }
             else if ((dataTypeObj != DataType.CHAR8 &&
-                      dataTypeObj != DataType.UCHAR8)) {
+                      dataTypeObj != DataType.UCHAR8 &&
+                      dataTypeObj != DataType.COMPOSITE)) {
                 eventNode.error = "Padding (" + eventNode.pad + ") does not match data type ("
                         + dataTypeObj + ")";
                 if (debug) System.out.println("searchForErrorInEvent: place = " + place + ", " + eventNode.error);
@@ -266,6 +268,8 @@ if (debug) System.out.println("searchForErrorInEvent: place = " + place + ", buf
      * to the lowest level structure containing the error.
      *
      * @param node node being scanned
+     * @return EvioHeader object (or node) containing the lowest level structure
+     *         containing the error, or null if no error.
      */
     private EvioHeader scanStructureForError(EvioHeader node) {
 
@@ -363,7 +367,8 @@ if (debug) System.out.println("Error 1: " + kidNode.error);
                             }
                         }
                         else if ((dataTypeObj != DataType.CHAR8 &&
-                                  dataTypeObj != DataType.UCHAR8)) {
+                                  dataTypeObj != DataType.UCHAR8 &&
+                                  dataTypeObj != DataType.COMPOSITE)) {
                             kidNode.error = "Padding (" + kidNode.pad + ") does not match data type ("
                                     + dataTypeObj + ")";
                             if (debug) System.out.println("Error 1: " + kidNode.error);
@@ -440,7 +445,8 @@ if (debug) System.out.println("Error 2: " + kidNode.error);
                             }
                         }
                         else if ((dataTypeObj != DataType.CHAR8 &&
-                                  dataTypeObj != DataType.UCHAR8)) {
+                                  dataTypeObj != DataType.UCHAR8 &&
+                                  dataTypeObj != DataType.COMPOSITE)) {
                             kidNode.error = "Padding (" + kidNode.pad + ") does not match data type ("
                                     + dataTypeObj + ")";
                             if (debug) System.out.println("Error 2: " + kidNode.error);
