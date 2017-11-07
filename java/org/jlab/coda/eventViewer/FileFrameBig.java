@@ -2323,7 +2323,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         /** Index to map we are using. */
         private int mapIndex;
 
-        /** Index to last word in file. */
+        /** Index to last word in file (first = 0). */
         private final long maxWordIndex;
 
         /** Size of file in bytes. */
@@ -2361,7 +2361,12 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         public MyTableModel(long fileSize) {
             this.fileSize = fileSize;
             // Min file size = 4 bytes
-            maxWordIndex = (fileSize-4L)/4L;
+            if (mappedMemoryHandler.haveExtraBytes()) {
+                maxWordIndex = (fileSize-4L)/4L + 1L;
+            }
+            else {
+                maxWordIndex = (fileSize-4L)/4L;
+            }
             mapCount = mappedMemoryHandler.getMapCount();
             maxMapByteSize = mappedMemoryHandler.getMaxMapSize();
             maxWordsPerMap = maxMapByteSize/4;
@@ -2401,7 +2406,9 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         }
 
         /**
-         * Get the total # of rows in file.
+         * Get the total # of rows in file. This takes into account
+         * the situation in which there are 1, 2, or 3 "left over"
+         * bytes at the end of the file.
          * @return total # of rows in file.
          */
         public long getTotalRows() {
@@ -2664,8 +2671,24 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
             long index = wordOffset + (row * 5) + col - 1;
 
             if (index > maxWordIndex) {
+                //System.out.println("\nIndex (" + index + ") is > maxWordIndex !!!\n");
                 return "";
             }
+            else if (index == maxWordIndex) {
+                // If we're looking at the very last bits of data,
+                // make adjustments if it does not end on a 4-byte boundary.
+                switch (mappedMemoryHandler.getExtraByteCount()) {
+                    case 3:
+                        return String.format("0x%06x", mappedMemoryHandler.getInt(index) & 0xffffff);
+                    case 2:
+                        return String.format("0x%04x", mappedMemoryHandler.getInt(index) & 0xffff);
+                    case 1:
+                        return String.format("0x%02x", mappedMemoryHandler.getInt(index) & 0xff);
+                    default:
+                        // Fall down to last statement
+                }
+            }
+
             // Value of cell is in memory map handler
             return String.format("0x%08x", mappedMemoryHandler.getInt(index));
         }
@@ -2793,13 +2816,13 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
          * and the color can be quickly found.
          * Value object is the Color object for the given long (map/row/col).
          */
-        private final HashMap<Long,Color> highlightCells  = new HashMap<Long,Color>(100);
+        private final HashMap<Long,Color> highlightCells  = new HashMap<>(100);
 
         /**
          * Keep track of which cells have been highlighted as containing errors.
          * These have priority over the regular highlighting.
          */
-        private final HashMap<Long,Color> highlightErrors = new HashMap<Long,Color>(100);
+        private final HashMap<Long,Color> highlightErrors = new HashMap<>(100);
 
 
         /** Constructor. */

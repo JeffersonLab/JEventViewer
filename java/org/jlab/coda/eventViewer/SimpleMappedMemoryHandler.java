@@ -1,5 +1,7 @@
 package org.jlab.coda.eventViewer;
 
+import org.jlab.coda.jevio.Utilities;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -15,7 +17,7 @@ import java.util.ArrayList;
  * files that size or smaller. This class circumvents this limit by viewing
  * large files as a collection of multiple memory maps.<p>
  *
- * Just a note about synchronization. This object is <b>NOT</b> threadsafe.
+ * Just a note about synchronization. This object is <b>NOT</b> thread-safe.
  */
 public class SimpleMappedMemoryHandler {
     /** Size of file in bytes. */
@@ -31,10 +33,14 @@ public class SimpleMappedMemoryHandler {
     private int mapCount;
 
     /** List containing each event's memory map. */
-    private ArrayList<ByteBuffer> maps = new ArrayList<ByteBuffer>(20);
+    private ArrayList<ByteBuffer> maps = new ArrayList<>(20);
 
     /** Channel used to create memory maps. */
     private FileChannel fileChannel;
+
+    /** The number of extra bytes at the very end of
+     *  this file beyond an integral number of ints. */
+    private int extraByteCount;
 
 
     /**
@@ -58,9 +64,10 @@ public class SimpleMappedMemoryHandler {
         if (fileSize < 4) {
             throw new IOException("file too small at " + fileSize + " bytes");
         }
+        extraByteCount = (int)(fileSize % 4);
 
         long sz, offset = 0L;
-        ByteBuffer memoryMapBuf;
+        ByteBuffer memoryMapBuf=null;
 
         if (remainingSize < 1) return;
 
@@ -81,6 +88,8 @@ public class SimpleMappedMemoryHandler {
             remainingSize -= sz;
             mapCount++;
         }
+
+        //Utilities.printBufferBytes(memoryMapBuf, 0, 1000, "File bytes");
     }
 
 
@@ -103,6 +112,23 @@ public class SimpleMappedMemoryHandler {
         try {fileChannel.close();}
         catch (IOException e) {}
     }
+
+
+    /**
+     * Does this file have 1, 2, or 3 bytes more
+     * than an integral number of integers?
+     * @return false if file is integral number of ints, else true.
+     */
+    public boolean haveExtraBytes() { return extraByteCount > 0; }
+
+
+    /**
+     * Get the number of extra bytes at the very end of
+     * this file beyond an integral number of ints.
+     * @return  number of extra bytes at the very end of
+     *          this file beyond an integral number of ints.
+     */
+    public int getExtraByteCount() { return extraByteCount; }
 
 
     /**
@@ -187,16 +213,12 @@ public class SimpleMappedMemoryHandler {
 
 
     /**
-     * Get the int value in the file at the given word (4 byte) index.
-     * @param wordIndex word index into file
-     * @return int value in file at word index
+     * Get the int value in the file at the given word (4 byte) position.
+     * @param wordPosition word position in file
+     * @return int value in file at word position
      */
-    public int getInt(long wordIndex) {
-        int mapIndex  = (int) (wordIndex*4/maxMapSize);
-        int byteIndex = (int) (wordIndex*4 - (mapIndex * maxMapSize));
-        ByteBuffer buf = getMap(mapIndex);
-        if (buf == null) return 0;
-        return buf.getInt(byteIndex);
+    public int getInt(long wordPosition) {
+        return getIntAtBytePos(4*wordPosition);
     }
 
 
@@ -210,6 +232,46 @@ public class SimpleMappedMemoryHandler {
         int byteIndex = (int) (bytePosition - (mapIndex * maxMapSize));
         ByteBuffer buf = getMap(mapIndex);
         if (buf == null) return 0;
+
+        // Check for end effects if 1, 2, or 3 bytes left.
+        // Assume highest (most significant) bytes are missing.
+        long remainingBytes = fileSize - bytePosition;
+        if (remainingBytes < 4L && remainingBytes > 0L) {
+           int lastInt=0;
+            switch ((int)remainingBytes) {
+                case 1:
+                    lastInt = ((int) buf.get(byteIndex)) & 0xff;
+                    break;
+
+                case 2:
+                    if (buf.order() == ByteOrder.BIG_ENDIAN) {
+                        lastInt = ((((int) buf.get(byteIndex)) << 8) & 0xff00) |
+                                   (((int) buf.get(byteIndex + 1) & 0xff));
+                    }
+                    else {
+                        lastInt = ((((int) buf.get(byteIndex + 1)) << 8) & 0xff00) |
+                                   (((int) buf.get(byteIndex) & 0xff));
+                    }
+                    break;
+
+                case 3:
+                    if (buf.order() == ByteOrder.BIG_ENDIAN) {
+                        lastInt = ((((int) buf.get(byteIndex)) << 16) & 0xff0000)  |
+                                  ((((int) buf.get(byteIndex + 1)) << 8) & 0xff00) |
+                                   (((int) buf.get(byteIndex + 2)) & 0xff);
+                    }
+                    else {
+                        lastInt = ((((int) buf.get(byteIndex + 2)) << 16) & 0xff0000) |
+                                  ((((int) buf.get(byteIndex + 1)) << 8)  & 0xff00)   |
+                                   (((int) buf.get(byteIndex)) & 0xff);
+                    }
+                    break;
+
+                default:
+            }
+            return lastInt;
+        }
+
         return buf.getInt(byteIndex);
     }
 
@@ -224,6 +286,13 @@ public class SimpleMappedMemoryHandler {
         int byteIndex = (int) (bytePosition - (mapIndex * maxMapSize));
         ByteBuffer buf = getMap(mapIndex);
         if (buf == null) return 0;
+
+        // Check for end effect if 1 byte left
+        // Assume highest (most significant) byte is missing.
+        if ((fileSize - bytePosition) == 1L) {
+            return (short)(((int) buf.get(byteIndex)) & 0xff);
+        }
+
         return buf.getShort(byteIndex);
     }
 
