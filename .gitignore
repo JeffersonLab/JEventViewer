@@ -1,0 +1,11 @@
+# ignore all files/dirs beginning with .
+.*
+
+# except this one
+!.gitignore
+
+# ignore generated files/dirs
+build/
+doc/users_guide/
+doc/javadoc/
+doxyerrors.log
