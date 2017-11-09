@@ -563,11 +563,17 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                             if (getBlock) {
                                 blockData = dataTableModel.highLightBlockHeader(highlightBlkHdr,
                                                                                 row, col, false);
+                                if (blockData == null) {
+                                    // Error of some kind
+                                    foundValue = false;
+                                    continue;
+                                }
 
                                 // We just found the magic #, but is it part of a block header?
-                                // Check other values to see if they make sense as a header,
-                                // (7th word is 0, lowest 8 bytes of 6th word is version (4).
-                                if (blockData[6] != 0 || (blockData[5] & 0xf) != 4) {
+                                // Check other values to see if they make sense as a header.
+                                // The lowest 8 bytes of 6th word is version which should be
+                                // between 4 & 6 inclusive.
+                                if ( ((blockData[5] & 0xf) < 2) || ((blockData[5] & 0xf) > 6) ) {
                                     // This is most likely NOT a header, so continue search
                                     foundValue = false;
                                     continue;
@@ -676,11 +682,17 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                             if (getBlock) {
                                 blockData = dataTableModel.highLightBlockHeader(highlightBlkHdr,
                                                                                 row, col, false);
+                                if (blockData == null) {
+                                    // Error of some kind
+                                    foundValue = false;
+                                    continue;
+                                }
 
                                 // We just found the magic #, but is it part of a block header?
-                                // Check other values to see if they make sense as a header,
-                                // (7th word is 0, lowest 8 bytes of 6th word is version (4).
-                                if (blockData[6] != 0 || (blockData[5] & 0xf) != 4) {
+                                // Check other values to see if they make sense as a header.
+                                // The lowest 8 bytes of 6th word is version which should be
+                                // between 4 & 6 inclusive.
+                                if ( ((blockData[5] & 0xf) < 2) || ((blockData[5] & 0xf) > 6) ) {
                                     // This is most likely NOT a header, so continue search
                                     foundValue = false;
                                     continue;
@@ -2592,12 +2604,21 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
             for (int i=0; i<8; i++) {
                 blockData[7-i] = (int)dataTableModel.getLongValueAt(index - i);
                 int[] mrc = dataTableModel.getMapRowCol(index - i);
-                if (mrc == null) return null;
+                if (mrc == null) {
+                    // Undo our recent highlighting
+                    for (int j=0; j<i; j++) {
+                        int[] mrc2 = dataTableModel.getMapRowCol(index - j);
+                        setMapIndex(mrc2[0]);
+                        dataTableRenderer.removeHighlightCell(mrc2[1], mrc2[2], isError);
+                        fireTableCellUpdated(mrc2[1], mrc2[2]);
+                    }
+                    return null;
+                }
                 setMapIndex(mrc[0]);
                 dataTableRenderer.setHighlightCell(color, mrc[1], mrc[2], isError);
                 fireTableCellUpdated(mrc[1], mrc[2]);
             }
-            return  blockData;
+            return blockData;
         }
 
         /**
@@ -2908,6 +2929,22 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
             }
             else {
                 highlightCells.put(getHighlightKey(mrc[0], mrc[1], mrc[2]), color);
+            }
+        }
+
+
+        /**
+         * Remvoe the highlight of the cell at the given row and column.
+         * @param row     row
+         * @param col     column
+         * @param isError true if removing the highlighting of an error
+         */
+        public void removeHighlightCell(int row, int col, boolean isError) {
+            if (isError) {
+                highlightErrors.remove(getHighlightKey(dataTableModel.getMapIndex(), row, col));
+            }
+            else {
+                highlightCells.remove(getHighlightKey(dataTableModel.getMapIndex(), row, col));
             }
         }
 
