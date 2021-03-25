@@ -23,8 +23,8 @@ public class SimpleMappedMemoryHandler {
     /** Size of file in bytes. */
     private long fileSize;
 
-    /** Max map size in bytes (1GB) */
-    private final long maxMapSize = 1000000000L;
+    /** Max map size in bytes (2GB) */
+    private final long maxMapSize = 2000000000L;
 
     /** Byte order of data in buffer. */
     private ByteOrder order;
@@ -33,7 +33,7 @@ public class SimpleMappedMemoryHandler {
     private int mapCount;
 
     /** List containing each event's memory map. */
-    private ArrayList<ByteBuffer> maps = new ArrayList<>(20);
+    private final ArrayList<ByteBuffer> maps = new ArrayList<>(20);
 
     /** Channel used to create memory maps. */
     private FileChannel fileChannel;
@@ -67,13 +67,11 @@ public class SimpleMappedMemoryHandler {
         extraByteCount = (int)(fileSize % 4);
 
         long sz, offset = 0L;
-        ByteBuffer memoryMapBuf=null;
-
-        if (remainingSize < 1) return;
+        ByteBuffer memoryMapBuf;
 
         // Divide the memory into chunks or regions
         while (remainingSize > 0) {
-            // Break into chunks of 200MB
+            // Break into chunks of maxMapSize bytes
             sz = Math.min(remainingSize, maxMapSize);
 //System.out.println("mmapHandler: remaining size = " + remainingSize +
 //                   ", map size = " + sz + ", mapCount = " + mapCount);

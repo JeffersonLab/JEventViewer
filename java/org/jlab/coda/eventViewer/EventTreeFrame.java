@@ -48,7 +48,7 @@ public class EventTreeFrame extends JFrame  {
         setLayout(new BorderLayout());
 
         // Create JPanel which holds the tree display and related widgets
-        EventTreePanel eventTreePanel = new EventTreePanel();
+        EventTreePanelv6 eventTreePanel = new EventTreePanelv6();
 
          // Create JPanel for displaying event information
         EventInfoPanel eventInfoPanel = new EventInfoPanel();

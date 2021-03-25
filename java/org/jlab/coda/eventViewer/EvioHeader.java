@@ -42,7 +42,7 @@ public final class EvioHeader implements Cloneable {
     boolean isEvent;
 
     /** Data source that this node is associated with. */
-    FileFrameBig.MyTableModel model;
+    MyTableModel2 model;
 
     /** For some applications it's nice to know the word index this event starts at. */
     Long wordIndex;
@@ -104,7 +104,7 @@ public final class EvioHeader implements Cloneable {
      * @param place      containing event's place in buffer (starting at 1)
      * @param model      data source containing this event
      */
-    EvioHeader(long pos, int place, FileFrameBig.MyTableModel model) {
+    EvioHeader(long pos, int place, MyTableModel2 model) {
         this.pos   = pos;
         this.place = place;
         this.model = model;

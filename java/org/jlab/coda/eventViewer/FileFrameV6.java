@@ -1,9 +1,8 @@
 package org.jlab.coda.eventViewer;
 
 
-import org.jlab.coda.jevio.BlockHeaderV4;
-import org.jlab.coda.jevio.DataType;
-import org.jlab.coda.jevio.EvioException;
+import org.jlab.coda.jevio.*;
+import org.jlab.coda.hipo.*;
 
 import javax.swing.*;
 import javax.swing.UIManager.LookAndFeelInfo;
@@ -15,13 +14,16 @@ import java.beans.PropertyChangeListener;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteOrder;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.SortedMap;
+import java.util.TreeMap;
 
 /**
  * This class implements a window that displays a file's bytes as hex, 32 bit integers.
  * @author timmer
  */
-public class FileFrameBig extends JFrame implements PropertyChangeListener {
+public class FileFrameV6 extends JFrame implements PropertyChangeListener {
 
     /** Table containing event data. */
     private JTable dataTable;
@@ -53,7 +55,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
     /** Keep track of the block header currently being viewed so
      *  back and forward arrows know which events to look for.
      */
-    private volatile BlockHeader currentBlockHeader;
+    private volatile BlockHeaderV6 currentBlockHeader;
 
     /** Was the data scanned for errors? */
     private volatile boolean isScanned;
@@ -102,7 +104,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
     // Widgets & members for fault searching
     private JRadioButton[] faultButtons;
     private ButtonGroup faultRadioGroup;
-    private EvioScanner evioFaultScanner;
+    private EvioScannerV6 evioFaultScanner;
 
     // Panels to hold event & block header info
     JPanel eventInfoPanel;
@@ -139,19 +141,18 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
     private int evioVersion;
 
 
-
     /**
 	 * Constructor for a simple viewer for a file's bytes.
 	 */
-	public FileFrameBig(File file, int version) {
+	public FileFrameV6(File file, int version) {
 		super(file.getName() + " bytes");
-		evioVersion = version;
+        evioVersion = version;
 		initializeLookAndFeel();
 
 		// Set the close to call System.exit
 		WindowAdapter wa = new WindowAdapter() {
 			public void windowClosing(WindowEvent event) {
-                FileFrameBig.this.dispose();
+                FileFrameV6.this.dispose();
 			}
 		};
 		addWindowListener(wa);
@@ -245,7 +246,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         // Quit menu item
         ActionListener al_exit = new ActionListener() {
             public void actionPerformed(ActionEvent e) {
-                FileFrameBig.this.dispose();
+                FileFrameV6.this.dispose();
             }
         };
         JMenuItem exit_item = new JMenuItem("Quit");
@@ -407,7 +408,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
      * Jump up or down to the specified word position in file.
      * It moves so that a full row is exactly at the top.
      * @param position index of data word to view
-     * @param color    highlight color if any
+     * @param color    highlight color is any
      * @param isEvent  are we highlighting an event (and therefore 2 words)?
      */
     private void scrollToIndex(long position, Color color, boolean isEvent) {
@@ -466,12 +467,12 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
      * @param getBlock  return the 7 words prior to & also the found value (8 words total).
      *                  Used when finding block headers.
      * @param comments  comments to add to found value's row
-     * @param task      object used to update progress of search
+     * @param sTask      object used to update progress of search
      *
      * @return previous 7 ints of found value if getPrevData arg is {@code true}
      */
     private int[] scrollToAndHighlight(boolean down, long findValue, boolean getBlock,
-                                      String comments, SearchTask task) {
+                                      String comments, SearchTask sTask) {
         JViewport viewport = tablePane.getViewport();
 
         // The location of the viewport relative to the table
@@ -539,14 +540,17 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                         startingCol = lastSearchedCol + 1;
                     }
                 }
-//System.out.println("\nStart looking at row = " + row + ", col = " + startingCol);
+System.out.println("\nStart looking at row = " + row + ", col = " + startingCol);
 
                 while (row < rowCount) {
+System.out.println("row down = " + row);
 
                     for (int col = startingCol; col < 6; col++) {
+System.out.println("col = " + col);
                         // Stop search now
                         if (stopSearch) {
                             foundValue = false;
+System.out.println("continue, stopSearch set to TRUE!!!");
                             break out;
                         }
 
@@ -559,24 +563,29 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
                         // If we found a match in a table's element ...
                         if (val == findValue) {
+System.out.println("FOUND val = " + Long.toHexString(findValue) + "!!!, getBLock = " + getBlock);
 
                             // If we're looking for a block header ...
                             if (getBlock) {
+System.out.println("try to get block data");
                                 blockData = dataTableModel.highLightBlockHeader(highlightBlkHdr,
                                                                                 row, col, false);
+System.out.println("block data =\n" + blockData);
                                 if (blockData == null) {
                                     // Error of some kind
                                     foundValue = false;
+System.out.println("continue, error in highlightBlockHeader");
                                     continue;
                                 }
 
                                 // We just found the magic #, but is it part of a block header?
                                 // Check other values to see if they make sense as a header.
                                 // The lowest 8 bytes of 6th word is version which should be
-                                // between 4 & 6 inclusive.
+                                // between 2 & 6 inclusive.
                                 if ( ((blockData[5] & 0xf) < 2) || ((blockData[5] & 0xf) > 6) ) {
                                     // This is most likely NOT a header, so continue search
                                     foundValue = false;
+System.out.println("continue, error in block data");
                                     continue;
                                 }
                             }
@@ -596,7 +605,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
                             // If found value's row is currently visible ...
                             if (rowY >= viewY && rowY <= viewY + viewHeight) {
-//System.out.println("Do NOT change view");
+System.out.println("Do NOT change view");
                                 dataTableModel.dataChanged();
                                 // Select cell of found value
                                 dataTable.setRowSelectionInterval(row,row);
@@ -613,6 +622,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                             lastFoundRow = row;
                             lastFoundCol = col;
                             lastFoundMap = dataTableModel.getMapIndex();
+System.out.println("Break out down !!!");
                             foundValue = true;
                             break out;
                         }
@@ -624,7 +634,9 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
                     // Cut way back on the number of times we do this
                     if (row % 4194304 == 0) {
-                        task.setTaskProgress(dataTableModel.getRowProgress(row));
+System.out.println("set progress");
+                        sTask.setTaskProgress(dataTableModel.getRowProgress(row));
+System.out.println("DOne setting progress");
                     }
                 }
             }
@@ -650,7 +662,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                             startingCol = 5;
                         }
                     }
-                    else {                                                                                  // Page Scrolling
+                    else {  // Page Scrolling
 
                         // Start at the row of the last value we found
                         row = lastSearchedRow;
@@ -658,12 +670,14 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                         startingCol = lastSearchedCol - 1;
                     }
                 }
-//System.out.println("\nStart looking at row = " + row + ", col = " + startingCol);
+System.out.println("\nStart looking at row = " + row + ", col = " + startingCol);
 
                 while (row >= 0) {
+System.out.println("row up = " + row);
 
                     // In general, start with right-most col and go left
                     for (int col = startingCol; col > 0; col--) {
+System.out.println("col = " + col);
                         // Stop search now
                         if (stopSearch) {
                             foundValue = false;
@@ -692,7 +706,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                                 // We just found the magic #, but is it part of a block header?
                                 // Check other values to see if they make sense as a header.
                                 // The lowest 8 bytes of 6th word is version which should be
-                                // between 4 & 6 inclusive.
+                                // between 2 & 6 inclusive.
                                 if ( ((blockData[5] & 0xf) < 2) || ((blockData[5] & 0xf) > 6) ) {
                                     // This is most likely NOT a header, so continue search
                                     foundValue = false;
@@ -716,7 +730,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
                             // If found value's row is currently visible ...
                             if (rowY >= viewY && rowY <= viewY + viewHeight) {
-//System.out.println("Do NOT change view");
+System.out.println("Do NOT change view");
                                 dataTableModel.dataChanged();
                                 // Select cell of found value
                                 dataTable.setRowSelectionInterval(row,row);
@@ -725,7 +739,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                             else {
                                 // Place found row 5 rows above view's bottom
                                 int numRowsViewed = viewHeight / dataTableRowHeight;
-//System.out.println("rows viewed = " + numRowsViewed + ", final row = " + (row + numRowsViewed - 5));
+System.out.println("rows viewed = " + numRowsViewed + ", final row = " + (row + numRowsViewed - 5));
                                 finalY = (row - numRowsViewed + 6)*dataTableRowHeight;
                                 rec = new Rectangle(viewPoint.x, finalY, viewWidth, viewHeight);
                                 // Selection will be made AFTER jump to view (at very end)
@@ -736,6 +750,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                             lastFoundCol = col;
                             lastFoundMap = dataTableModel.getMapIndex();
                             foundValue = true;
+System.out.println("Break out up !!!");
                             break out;
                         }
                     }
@@ -745,7 +760,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                     startingCol = 5;
 
                     if (row % 4194304 == 0) {
-                        task.setTaskProgress(dataTableModel.getRowProgress(row));
+                        sTask.setTaskProgress(dataTableModel.getRowProgress(row));
                     }
                 }
             }
@@ -753,8 +768,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
             // If we're here, we did NOT find any value
 
             if (down) {
-//System.out.println("Did NOT find val, at bottom = " + atBottom +
-//                   ", stopSearch = " + stopSearch);
+System.out.println("Did NOT find val, at bottom, stopSearch = " + stopSearch);
                 // See if there are more data (maps) to follow.
                 // If so, go to the next map and search there.
                 if (!dataTableModel.nextMap()) {
@@ -767,7 +781,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                 lastSearchedCol = 0;
             }
             else {
-//System.out.println("Did NOT find val, at top = " + atTop);
+System.out.println("Did NOT find val, at top");
                 // See if there are more data (maps) before.
                 // If so, go to the previous map and search there.
                 if (!dataTableModel.previousMap()) {
@@ -823,7 +837,6 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
     }
 
 
-
     /** A SwingWorker thread to handle a possibly lengthy search for a value. */
     class SearchTask extends SwingWorker<int[], Void> {
 
@@ -843,7 +856,8 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         @Override
         public int[] doInBackground() {
             enableControlsDuringSearch();
-            return scrollToAndHighlight(down, value, findBlock, label, this);
+            int[] blockData = scrollToAndHighlight(down, value, findBlock, label, this);
+            return blockData;
         }
 
         public void setTaskProgress(int p) {
@@ -867,6 +881,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
             catch (InterruptedException ignore) {}
             catch (java.util.concurrent.ExecutionException e) {
                 System.err.println("Error searching file: " + e.getMessage());
+                Utilities.printStackTrace();
             }
 
             // If looking for a block, display its info
@@ -1448,15 +1463,10 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
      * @param blockData array containing block header info.
      */
     private void updateBlockInfoPanel(int[] blockData) {
-        if (blockData == null ||blockInfoPanel == null ) return;
-
-        ((JLabel)(blockInfoPanel.getComponent(1))).setText("" + blockData[0]);
-        ((JLabel)(blockInfoPanel.getComponent(3))).setText("" + blockData[2]);
-        ((JLabel)(blockInfoPanel.getComponent(5))).setText("" + blockData[1]);
-        ((JLabel)(blockInfoPanel.getComponent(7))).setText("" + blockData[3]);
-        ((JLabel)(blockInfoPanel.getComponent(9))).setText("" + (blockData[5] & 0xff));
-        ((JLabel)(blockInfoPanel.getComponent(11))).setText("" + BlockHeaderV4.hasDictionary(blockData[5]));
-        ((JLabel)(blockInfoPanel.getComponent(13))).setText(""+ BlockHeaderV4.isLastBlock(blockData[5]));
+        if (blockData == null || blockInfoPanel == null || blockData.length < 14) return;
+        BlockHeaderV6 bh = new BlockHeaderV6();
+        bh.setData(blockData);
+        updateBlockInfoPanel(bh);
     }
 
 
@@ -1464,16 +1474,24 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
      * Method to update panel containing block header info.
      * @param header object containing block header info.
      */
-    private void updateBlockInfoPanel(BlockHeader header) {
+    private void updateBlockInfoPanel(BlockHeaderV6 header) {
         if (header == null || blockInfoPanel == null) return;
 
         ((JLabel)(blockInfoPanel.getComponent(1))).setText(""  + header.len);
-        ((JLabel)(blockInfoPanel.getComponent(3))).setText(""  + header.headerLen);
-        ((JLabel)(blockInfoPanel.getComponent(5))).setText(""  + header.place);
+        ((JLabel)(blockInfoPanel.getComponent(3))).setText(""  + header.place);
+        ((JLabel)(blockInfoPanel.getComponent(5))).setText(""  + header.headerLen);
         ((JLabel)(blockInfoPanel.getComponent(7))).setText(""  + header.count);
-        ((JLabel)(blockInfoPanel.getComponent(9))).setText(""  + header.version);
-        ((JLabel)(blockInfoPanel.getComponent(11))).setText("" + header.hasDictionary);
-        ((JLabel)(blockInfoPanel.getComponent(13))).setText("" + header.isLast);
+        ((JLabel)(blockInfoPanel.getComponent(9))).setText(""  + header.indexArrayBytes);
+        ((JLabel)(blockInfoPanel.getComponent(11))).setText("" + header.version);
+        ((JLabel)(blockInfoPanel.getComponent(13))).setText("" + header.hasDictionary);
+        ((JLabel)(blockInfoPanel.getComponent(15))).setText("" + header.isLast);
+
+        ((JLabel)(blockInfoPanel.getComponent(17))).setText("" + header.userHeaderBytes);
+        ((JLabel)(blockInfoPanel.getComponent(19))).setText("" + header.uncompressedDataBytes);
+        ((JLabel)(blockInfoPanel.getComponent(21))).setText(     header.compressionTypeStr);
+        ((JLabel)(blockInfoPanel.getComponent(23))).setText("" + header.compressedDataWords);
+        ((JLabel)(blockInfoPanel.getComponent(25))).setText("" + header.register1);
+        ((JLabel)(blockInfoPanel.getComponent(27))).setText("" + header.register2);
     }
 
 
@@ -1515,17 +1533,26 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
 
         blockInfoPanel = new JPanel();
-        blockInfoPanel.setLayout(new GridLayout(7,2,5,2));
+        blockInfoPanel.setLayout(new GridLayout(14,2,5,2));
         blockInfoPanel.setBorder(compound);
 
-        JLabel[] labels = new JLabel[14];
+        int labelCount = 28;
+        JLabel[] labels = new JLabel[labelCount];
         labels[0]  = new JLabel("Total words  ");
-        labels[2]  = new JLabel("Header words  ");
-        labels[4]  = new JLabel("Id number  ");
+        labels[2]  = new JLabel("Record #  ");
+        labels[4]  = new JLabel("Header words  ");
         labels[6]  = new JLabel("Event count  ");
-        labels[8]  = new JLabel("Version  ");
-        labels[10] = new JLabel("Has dictionary  ");
-        labels[12] = new JLabel("Is last  ");
+        labels[8]  = new JLabel("Index array bytes  ");
+        labels[10] = new JLabel("Version  ");
+        labels[12] = new JLabel("Has dictionary  ");
+        labels[14] = new JLabel("Is last  ");
+
+        labels[16] = new JLabel("User header bytes  ");
+        labels[18] = new JLabel("Uncompressed bytes  ");
+        labels[20] = new JLabel("Compression type  ");
+        labels[22] = new JLabel("Compressed words  ");
+        labels[24] = new JLabel("User register 1  ");
+        labels[26] = new JLabel("User register 2  ");
 
         labels[1]  = new JLabel("");
         labels[3]  = new JLabel("");
@@ -1534,8 +1561,15 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         labels[9]  = new JLabel("");
         labels[11] = new JLabel("");
         labels[13] = new JLabel("");
+        labels[15] = new JLabel("");
+        labels[17] = new JLabel("");
+        labels[19] = new JLabel("");
+        labels[21] = new JLabel("");
+        labels[23] = new JLabel("");
+        labels[25] = new JLabel("");
+        labels[27] = new JLabel("");
 
-        for (int i=0; i < 14; i++) {
+        for (int i=0; i < labelCount; i++) {
             labels[i].setOpaque(true);
             if (i%2 == 1) {
                 labels[i].setBackground(Color.white);
@@ -1585,10 +1619,14 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         // If no scan for faults has been done, do it now
         if (evioFaultScanner == null) {
             try {
-                evioFaultScanner = new EvioScanner(this,
-                                                   dataTableModel,
-                                                   dataTableRenderer,
-                                                   errorTask);
+//                evioFaultScanner = new EvioScannerV6(this,
+//                                                   dataTableModel,
+//                                                   dataTableRenderer,
+//                                                   errorTask);
+                evioFaultScanner = new EvioScannerV6(null,
+                                                   null,
+                                                   null,
+                                                   null);
             }
             catch (EvioException e) {
                 JOptionPane.showMessageDialog(this, e.getMessage(), "Return",
@@ -1664,7 +1702,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         };
 
         // Lists of blocks & events containing evio errors
-        ArrayList<BlockHeader> blocks = evioFaultScanner.getBlockErrorNodes();
+        ArrayList<BlockHeaderV6> blocks = evioFaultScanner.getBlockErrorNodes();
 
         int blockCount = blocks.size();
 
@@ -1675,7 +1713,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         DefaultListModel<JRadioButton> model = new DefaultListModel<JRadioButton>();
 
         for (int i=0; i < blockCount; i++) {
-            BlockHeader blockHeader = blocks.get(i);
+            BlockHeaderV6 blockHeader = blocks.get(i);
             // Reported number is word position which starts at 1
             faultButtons[i] = new JRadioButton("Block " + blockHeader.place);
             faultButtons[i].setActionCommand("B:" + i);
@@ -2250,16 +2288,18 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         try {
             mappedMemoryHandler = new SimpleMappedMemoryHandler(file, order);
         }
-        catch (IOException e) {/* should not happen */}
+        catch (IOException e) {
+            e.printStackTrace();
+            return;
+        }
 
         // Set up the table widget for displaying data
         dataTableModel = new MyTableModel2(mappedMemoryHandler, comments, evioVersion);
         dataTable = new JTable(dataTableModel);
         dataTableRenderer = new MyRenderer2(8);
         dataTableRenderer.setTableModel(dataTableModel);
-        dataTableModel.setTableRenderer(dataTableRenderer);
-
         dataTableRenderer.setHorizontalAlignment(JLabel.RIGHT);
+        dataTableModel.setTableRenderer(dataTableRenderer);
         dataTable.setDefaultRenderer(String.class, dataTableRenderer);
         dataTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         dataTable.setCellSelectionEnabled(true);

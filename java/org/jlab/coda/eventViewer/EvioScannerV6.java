@@ -1,7 +1,10 @@
 package org.jlab.coda.eventViewer;
 
 
-import org.jlab.coda.jevio.*;
+import org.jlab.coda.jevio.BlockHeaderV4;
+import org.jlab.coda.jevio.DataType;
+import org.jlab.coda.jevio.EvioException;
+import org.jlab.coda.jevio.IBlockHeader;
 
 import javax.swing.*;
 import java.nio.ByteBuffer;
@@ -13,10 +16,10 @@ import java.util.ArrayList;
  *
  * @author timmer (1/9/15)
  */
-public class EvioScanner {
+public class EvioScannerV6 {
 
     /** Stores info of all block headers in an evio format file with an error. */
-    private final ArrayList<BlockHeader> blockErrorNodes = new ArrayList<BlockHeader>(10);
+    private final ArrayList<BlockHeaderV6> blockErrorNodes = new ArrayList<BlockHeaderV6>(10);
 
     /** Object for accessing file data. */
     private final MyTableModel2 dataModel;
@@ -54,10 +57,10 @@ public class EvioScanner {
      * @throws EvioException if endianness is wrong, version is wrong,
      *                       or too little data to read block header
      */
-    public EvioScanner(FileFrameBig component,
-                       MyTableModel2 dataModel,
-                       MyRenderer2 dataRenderer,
-                       FileFrameBig.ErrorScanTask errorTask) throws EvioException {
+    public EvioScannerV6(FileFrameBig component,
+                         MyTableModel2 dataModel,
+                         MyRenderer2 dataRenderer,
+                         FileFrameBig.ErrorScanTask errorTask) throws EvioException {
         this.parentComponent = component;
         this.dataModel       = dataModel;
         this.dataRenderer    = dataRenderer;
@@ -68,10 +71,10 @@ public class EvioScanner {
 
 
     /**
-     * Get the list of BlockHeader objects containing evio errors.
-     * @return list of BlockHeader objects containing evio errors.
+     * Get the list of BlockHeaderV6 objects containing evio errors.
+     * @return list of BlockHeaderV6 objects containing evio errors.
      */
-    public ArrayList<BlockHeader> getBlockErrorNodes() { return blockErrorNodes; }
+    public ArrayList<BlockHeaderV6> getBlockErrorNodes() { return blockErrorNodes; }
 
 
     /**
@@ -540,7 +543,7 @@ if (debug) System.out.println("Error 4: " + node.error);
         long     blockEventLengthsSum, blockDataBytes, blockWordSize, byteLen;
         int      blockNum, blockHdrWordSize, blockEventCount;
         boolean  firstBlock=true, foundError=false, foundErrorInBlock, debug=false;
-        BlockHeader blockNode;
+        BlockHeaderV6 blockNode;
         EvioHeader node;
 
         blockErrorNodes.clear();
@@ -589,7 +592,7 @@ if (debug) System.out.println("Error 4: " + node.error);
 
 //            System.out.println("Magic # = 0x" + Integer.toHexString(magicNum));
             // Store block header info in object
-            blockNode           = new BlockHeader();
+            blockNode           = new BlockHeaderV6();
             blockNode.filePos   = bufPos;
             blockNode.len       = blockWordSize;
             blockNode.headerLen = blockHdrWordSize;
@@ -687,7 +690,7 @@ if (debug) System.out.println("Error 4: " + node.error);
                 // length and/or event count are wrong. So check to see if we've landed
                 // at the beginning of the next block header.
                 long word = dataModel.getInt(bufPosInBlock + 28);
-                if (word == BlockHeader.MAGIC_INT) {
+                if (word == BlockHeaderV6.MAGIC_INT) {
                     // We've gone too far - to beginning of next block
                     blockNode.error = "block len too large and event count = " +
                                        blockEventCount + " but should = " + i;

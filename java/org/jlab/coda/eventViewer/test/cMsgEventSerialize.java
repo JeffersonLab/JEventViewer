@@ -2,6 +2,7 @@ package org.jlab.coda.eventViewer.test;
 
 
 import org.jlab.coda.cMsg.*;
+import org.jlab.coda.hipo.CompressionType;
 import org.jlab.coda.jevio.*;
 
 import java.io.IOException;
@@ -143,7 +144,8 @@ public class cMsgEventSerialize {
             int maxBlockSizeInBytes = 1000000;
 
             EventWriter eventWriter = new EventWriter(myBuf, maxBlockSizeInBytes,
-                                                      maxBanksPerBlock, dictionary, null);
+                                                      maxBanksPerBlock, dictionary,
+                                         1, null, CompressionType.RECORD_UNCOMPRESSED);
 
             // event - bank of ints, tag = 1, num = 1
             EventBuilder eventBuilder = new EventBuilder(1, DataType.INT32, 1);

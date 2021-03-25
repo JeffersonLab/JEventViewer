@@ -59,7 +59,7 @@ public class EventTreeMenu {
     private int currentEventNum, currentEventMax, currentEventMin;
 
     /** The panel that holds the tree and all associated widgets. */
-	private EventTreePanel eventTreePanel;
+	private EventTreePanelv6 eventTreePanel;
 
     /**
      * Source of the evio events being displayed.
@@ -98,6 +98,9 @@ public class EventTreeMenu {
 
     /** The reader object for the currently viewed evio file. */
     private EvioReader evioFileReader;
+
+    /** Evio version of opened file. Default to v6. */
+    private int evioVersion = 6;
 
     //----------------------
     // Dictionary stuff
@@ -171,7 +174,7 @@ public class EventTreeMenu {
 	 * Constructor. Holds the menus for a frame or internal frame that wants to manage a tree panel.
 	 * @param eventTreePanel holds the tree and all associated the widgets.
 	 */
-	public EventTreeMenu(final EventTreePanel eventTreePanel, EventInfoPanel eventInfoPanel) {
+	public EventTreeMenu(final EventTreePanelv6 eventTreePanel, EventInfoPanel eventInfoPanel) {
         this.eventTreePanel = eventTreePanel;
         this.eventInfoPanel = eventInfoPanel;
 	}
@@ -180,7 +183,7 @@ public class EventTreeMenu {
      * Get the main event display panel.
      * @return main event display panel.
      */
-    public EventTreePanel getEventTreePanel() {
+    public EventTreePanelv6 getEventTreePanel() {
         return eventTreePanel;
     }
 
@@ -1404,31 +1407,31 @@ public class EventTreeMenu {
         menu.add(orientItem);
 
 
-        menu.addSeparator();
-
-
-        // menuitem to add another column to data view
-        ActionListener al_addCol = new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                eventTreePanel.addTableColumn();
-            }
-        };
-        JMenuItem addColItem = new JMenuItem("Add Column");
-        addColItem.addActionListener(al_addCol);
-        addColItem.setEnabled(true);
-        menu.add(addColItem);
-
-
-        // menuitem to remove another column from data view
-        ActionListener al_subCol = new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                eventTreePanel.removeTableColumn();
-            }
-        };
-        JMenuItem subColItem = new JMenuItem("Remove Column");
-        subColItem.addActionListener(al_subCol);
-        subColItem.setEnabled(true);
-        menu.add(subColItem);
+//        menu.addSeparator();
+//
+//
+//        // menuitem to add another column to data view
+//        ActionListener al_addCol = new ActionListener() {
+//            public void actionPerformed(ActionEvent e) {
+//                eventTreePanel.addTableColumn();
+//            }
+//        };
+//        JMenuItem addColItem = new JMenuItem("Add Column");
+//        addColItem.addActionListener(al_addCol);
+//        addColItem.setEnabled(true);
+//        menu.add(addColItem);
+//
+//
+//        // menuitem to remove another column from data view
+//        ActionListener al_subCol = new ActionListener() {
+//            public void actionPerformed(ActionEvent e) {
+//                eventTreePanel.removeTableColumn();
+//            }
+//        };
+//        JMenuItem subColItem = new JMenuItem("Remove Column");
+//        subColItem.addActionListener(al_subCol);
+//        subColItem.setEnabled(true);
+//        menu.add(subColItem);
 
         return menu;
     }
@@ -1794,7 +1797,21 @@ public class EventTreeMenu {
         if (file == null) {
             return;
         }
-        new FileFrameBig(file);
+
+        // Find the evio version of the file. Assume it's 6.
+        try {
+            evioVersion = Utilities.getEvioVersion(file);
+        }
+        catch (EvioException e) {}
+
+        System.out.println("THE FILE IS EVIO VERSION " + evioVersion);
+
+        if (evioVersion > 5) {
+            new FileFrameV6(file, evioVersion);
+        }
+        else {
+            new FileFrameBig(file, evioVersion);
+        }
     }
 
     /**
