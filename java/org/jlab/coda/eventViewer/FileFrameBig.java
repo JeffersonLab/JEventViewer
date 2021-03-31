@@ -2252,6 +2252,18 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         }
         catch (IOException e) {/* should not happen */}
 
+        // Get the file endian right
+        ByteOrder actualOrder = mappedMemoryHandler.getOrder();
+        if (actualOrder != order) {
+            if (actualOrder == ByteOrder.LITTLE_ENDIAN) {
+                switchMenuItem.setText("To big endian");
+            }
+            else {
+                switchMenuItem.setText("To little endian");
+            }
+            order = actualOrder;
+        }
+
         // Set up the table widget for displaying data
         dataTableModel = new MyTableModel2(mappedMemoryHandler, comments, evioVersion);
         dataTable = new JTable(dataTableModel);
