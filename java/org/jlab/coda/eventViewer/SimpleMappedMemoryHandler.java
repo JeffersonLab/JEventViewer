@@ -1,5 +1,7 @@
 package org.jlab.coda.eventViewer;
 
+import org.jlab.coda.hipo.FileHeader;
+import org.jlab.coda.hipo.RecordHeader;
 import org.jlab.coda.jevio.Utilities;
 
 import java.io.File;
@@ -23,8 +25,8 @@ public class SimpleMappedMemoryHandler {
     /** Size of file in bytes. */
     private long fileSize;
 
-    /** Max map size in bytes (2GB) */
-    private final long maxMapSize = 2000000000L;
+    /** Max map size in bytes (1GB) */
+    private final long maxMapSize = 1000000000L;
 
     /** Byte order of data in buffer. */
     private ByteOrder order;
@@ -42,6 +44,23 @@ public class SimpleMappedMemoryHandler {
      *  this file beyond an integral number of ints. */
     private int extraByteCount;
 
+    /**
+     * Get the entire evio version 6 file header, including the initial 14 words,
+     * its index, and its user header in a ByteBuffer.
+     */
+    private ByteBuffer fileHeaderData;
+
+    /** Get the evio version 6 file header object. */
+    private FileHeader fileHeader;
+
+    /** The evio version 6 file header total bytes, header +_ index + user header. */
+    private int fileHeaderBytes;
+
+    /** The index of the first data.
+     *  It's the number of 32 bit words comprising the
+     *  file and first block headers for evio version 6.
+     *  For earlier evio versions this is 8 words which will be our default. */
+    private int firstDataIndex = 8;
 
     /**
      * Constructor.
@@ -61,7 +80,9 @@ public class SimpleMappedMemoryHandler {
         fileChannel = fileInputStream.getChannel();
 
         long remainingSize = fileSize = fileChannel.size();
-        if (fileSize < 4) {
+        if (fileSize < 4*8) {
+            // For a bare minimum there must be 8 words in evio files version < 6 block header,
+            // and 14 words for version 6+ file header.
             throw new IOException("file too small at " + fileSize + " bytes");
         }
         extraByteCount = (int)(fileSize % 4);
@@ -73,8 +94,8 @@ public class SimpleMappedMemoryHandler {
         while (remainingSize > 0) {
             // Break into chunks of maxMapSize bytes
             sz = Math.min(remainingSize, maxMapSize);
-//System.out.println("mmapHandler: remaining size = " + remainingSize +
-//                   ", map size = " + sz + ", mapCount = " + mapCount);
+System.out.println("mmapHandler: remaining size = " + remainingSize +
+                   ", map size = " + sz + ", mapCount = " + mapCount);
 
             memoryMapBuf = fileChannel.map(FileChannel.MapMode.READ_ONLY, offset, sz);
             memoryMapBuf.order(order);
@@ -85,6 +106,63 @@ public class SimpleMappedMemoryHandler {
             offset += sz;
             remainingSize -= sz;
             mapCount++;
+        }
+
+        // Read in evio version 6 file header
+        try {
+            // This call gets version and sets ByteBuffer arg's order to correct endianness
+            int version = org.jlab.coda.jevio.Utilities.getEvioVersion(maps.get(0));
+            ByteOrder actualOrder = maps.get(0).order();
+
+            // For version 6+ get the file header data
+            if (version > 5) {
+                // Create byte buffer to hold file header data
+                fileHeaderData = ByteBuffer.wrap(new byte[4 * 14]);
+                fileHeaderData.order(actualOrder);
+
+                // Do absolute read from map into file header byte buffer
+                maps.get(0).get(0, fileHeaderData.array(), 0, 4 * 14);
+                // Create FileHeader object
+                fileHeader = new FileHeader();
+                // Have the object parse the buffer and store it in fields.
+                // This method also sets fileHeaderData's byte order to its proper value.
+                fileHeader.readHeader(fileHeaderData, 0);
+
+                // Find total size, which includes index and user header, then read rest of data if necessary
+                fileHeaderBytes = fileHeader.getLength();
+                if (fileHeaderBytes > 4*14) {
+                    fileHeaderData = ByteBuffer.wrap(new byte[fileHeaderBytes]);
+                    fileHeaderData.order(actualOrder);
+                    maps.get(0).get(0, fileHeaderData.array(), 0, fileHeaderBytes);
+                }
+
+                // Another useful quantity is the index of where the very first data starts,
+                // past the file header the first record header.
+                ByteBuffer firstRecordHdr = ByteBuffer.wrap(new byte[4 * 14]);
+                maps.get(0).get(fileHeaderBytes, firstRecordHdr.array(), 0, 4 * 14);
+                // Create RecordHeader object
+                RecordHeader recHeader = new RecordHeader();
+                // Parse the buffer and store it in fields.
+                recHeader.readHeader(firstRecordHdr, 0);
+                firstDataIndex = (fileHeaderBytes + recHeader.getTotalHeaderLength())/4;
+System.out.println("mmapHandler: fileHeaderBytes = " + fileHeaderBytes);
+System.out.println("mmapHandler: recordHeaderTotalLen = " + recHeader.getTotalHeaderLength());
+System.out.println("mmapHandler: firstDataIndex = " + firstDataIndex);
+            }
+
+            // If the actual order is not what it was initially set to, fix it
+            if (actualOrder != order) {
+                this.order = actualOrder;
+                for (ByteBuffer buf : maps) {
+                    buf.order(actualOrder);
+                }
+            }
+
+        }
+        catch (Exception e) {
+            // If this fails, it's most likely an earlier evio version
+            fileHeaderData = null;
+            fileHeader = null;
         }
 
         //Utilities.printBufferBytes(memoryMapBuf, 0, 1000, "File bytes");
@@ -103,6 +181,38 @@ public class SimpleMappedMemoryHandler {
         mapCount = 1;
         maps.add(buf);
     }
+
+
+    /**
+     * Get the number of 32 bit words comprising the
+     * file and first record headers for evio version 6 files, or
+     * comprising the first block header for evio versions < 6.
+     * @return the position, in 32 bit words, of the first data word from the file start.
+     */
+    public int getFirstDataIndex() {return firstDataIndex;}
+
+
+    /**
+     * Get the total number of bytes in file header + index + user header for evio version 6 file.
+     * @return total number of bytes in file header + index + user header for evio version 6 file.
+     */
+    public int getTotalFileHeaderBytes() {return fileHeaderBytes;}
+
+
+    /**
+     * Get the file header data of a version 6 evio file including index and user header.
+     * @return file header data of a version 6 evio file including index and user header,
+     *         or null if evio version &lt; 6.
+     */
+    public ByteBuffer getFileHeaderData() {return fileHeaderData;}
+
+
+    /**
+     * Get the file header of a version 6 evio file.
+     * @return file header of a version 6 evio file,
+     *         or null if evio version &lt; 6.
+     */
+    public FileHeader getFileHeader() {return fileHeader;}
 
 
     /** Close unneeded file channel object. */

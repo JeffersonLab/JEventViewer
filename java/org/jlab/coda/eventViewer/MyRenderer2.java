@@ -12,7 +12,7 @@ import java.util.HashMap;
 final class MyRenderer2 extends DefaultTableCellRenderer {
 
     private final int   nthRow;
-    private static final Color alternateRowColor = new Color(235, 245, 255);
+    private static final Color alternateRowColor = new Color(240, 240, 240);
     private static final Color highlightGreen = new Color(210,250,210);
     private MyTableModel2 dataTableModel;
     private Color defaultHighlight = highlightGreen;
@@ -108,17 +108,13 @@ final class MyRenderer2 extends DefaultTableCellRenderer {
      * @param isError true if highlighting an error
      */
     public void setHighlightCell(Color color, int row, int col, boolean isError) {
-        System.out.println("setHighlightCell IN");
         if (color == null) color = defaultHighlight;
         if (isError) {
             highlightErrors.put(getHighlightKey(dataTableModel.getMapIndex(), row, col), color);
         }
         else {
-            System.out.println("setHighlightCell 1");
             highlightCells.put(getHighlightKey(dataTableModel.getMapIndex(), row, col), color);
-            System.out.println("setHighlightCell 2");
         }
-        System.out.println("setHighlightCell end");
     }
 
 
@@ -142,7 +138,7 @@ final class MyRenderer2 extends DefaultTableCellRenderer {
 
 
     /**
-     * Remvoe the highlight of the cell at the given row and column.
+     * Remove the highlight of the cell at the given row and column.
      * @param row     row
      * @param col     column
      * @param isError true if removing the highlighting of an error

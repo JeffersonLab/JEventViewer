@@ -1,5 +1,8 @@
 package org.jlab.coda.eventViewer;
 
+import org.jlab.coda.hipo.RecordHeader;
+import org.jlab.coda.jevio.Utilities;
+
 import javax.swing.table.AbstractTableModel;
 import java.awt.*;
 import java.nio.ByteOrder;
@@ -328,52 +331,228 @@ final class MyTableModel2 extends AbstractTableModel {
         }
     }
 
-
     /**
-     * Highlight a block header. The given row & col are for
-     * the magic # word of the header. Refresh view.
+     * Highlight an event header. The given row & col are for
+     * the first word of the header. Refresh view.
+     * For evio versions 6+ only.
      * @param color   color of highlight
      * @param row     row
      * @param col     column
      * @param isError true if highlighting an error
-     * @return int array containing all the block header values; null if error
      */
-    public int[] highLightBlockHeader(Color color, int row, int col, boolean isError) {
-        // 8 words size of evio header in versions < 6
-        int headerSize = 8;
-        int after = 0;
+    public void highLightEventHeaderV6(Color color, int row, int col, boolean isError) {
 
-        // In version 6 ...
-        if (evioVersion > 5) {
-            // The magic # is 8th word, but header is 14 words
-            headerSize = 14;
-            // 7 prior and 6 after the magic #.
-            after = 6;
+        // Index of the magic # found in search
+        long entryIndex = getWordIndexOf(row,col);
+
+        // Ignore the file header and the beginning of the first record header
+System.out.println("highLightBlockHeader: entryIndex = " + entryIndex + ", min acceptable index = " +
+mappedMemoryHandler.getFirstDataIndex());
+        if (mapIndex == 0 && entryIndex < mappedMemoryHandler.getFirstDataIndex()) {
+            return;
         }
 
-        int[] blockData = new int[headerSize];
-        // Index of the magic # found in search
-        long magicNumIndex = getWordIndexOf(row,col);
-        // Index of last word of block header
-        long lastIndex = magicNumIndex + after;
-
-        for (int i=0; i<headerSize; i++) {
-            blockData[headerSize-i-1] = (int)getLongValueAt(lastIndex - i);
-            int[] mrc = getMapRowCol(lastIndex - i);
-            if (mrc == null) {
-                // Undo our recent highlighting
-                for (int j=0; j<i; j++) {
-                    int[] mrc2 = getMapRowCol(lastIndex - j);
-                    setMapIndex(mrc2[0]);
-                    dataTableRenderer.removeHighlightCell(mrc2[1], mrc2[2], isError);
-                    fireTableCellUpdated(mrc2[1], mrc2[2]);
-                }
-                return null;
-            }
+        // Highlight starting point
+        dataTableRenderer.setHighlightCell(color, row, col, isError);
+        fireTableCellUpdated(row, col);
+        // Also highlight the next (tag/num) header word, but
+        // not if we're starting at pos = 0, col 0
+        if (col != 0) {
+            long pos  = getWordIndexOf(row, col);
+            int[] mrc = getMapRowCol(pos + 1);
+            if (mrc == null) return;
             setMapIndex(mrc[0]);
             dataTableRenderer.setHighlightCell(color, mrc[1], mrc[2], isError);
             fireTableCellUpdated(mrc[1], mrc[2]);
         }
+    }
+
+
+    /**
+     * Highlight a file header. This is only valid for evio version 6.
+     * It's always at the very beginning of the file. Refresh view.
+     * This is done once for each file.
+     *
+     * @param color1   color of highlight for 14 word header
+     * @param color2   color of highlight for header's index
+     * @param color3   color of highlight for user header
+     * @param headerWords  number of 32bit words the the file header proper.
+     * @param indexWords   number of 32bit words the the file header's index array.
+     * @param userHdrWords number of 32bit words the the file header's user header (including padding).
+     */
+    public void highLightFileHeader(Color color1, Color color2, Color color3,
+                                    int headerWords, int indexWords, int userHdrWords) {
+        if (evioVersion < 6) {
+            return;
+        }
+
+        // For evio 6 we want to light the 14 word header differently from
+        // the index array and differently from the user header.
+        // All will be in related colors.
+
+        // How many rows are we talking about?
+        int totalWords = headerWords + indexWords + userHdrWords;
+        int totalRows = totalWords / wordsPerRow;
+
+        // Always in first map
+        setMapIndex(0);
+
+        // First the 14 word header
+        for (int i = 0; i < headerWords; i++) {
+            int[] mrc = getMapRowCol(i);
+            if (mrc == null) {
+                return;
+            }
+            dataTableRenderer.setHighlightCell(color1, mrc[1], mrc[2], false);
+        }
+
+        // Second the index
+        for (int i = headerWords; i < headerWords+indexWords; i++) {
+            int[] mrc = getMapRowCol(i);
+            if (mrc == null) {
+                return;
+            }
+            dataTableRenderer.setHighlightCell(color2, mrc[1], mrc[2], false);
+        }
+
+        // Finally the user header
+        for (int i = headerWords+indexWords; i < totalWords; i++) {
+            int[] mrc = getMapRowCol(i);
+            if (mrc == null) {
+                return;
+            }
+            dataTableRenderer.setHighlightCell(color3, mrc[1], mrc[2], false);
+        }
+
+        setValueAt("File Header", 1, 6);
+        fireTableRowsUpdated(0, totalRows-1);
+    }
+
+
+    /**
+     * Highlight a block header. The given row & col are for
+     * the magic # word of the header. Refresh view.
+     * This is used only for evio version < 6.
+     *
+     * @param color   color of highlight
+     * @param row     row
+     * @param col     column
+     * @param isError true if highlighting an error
+     * @return int array containing all the block header values; null if error or file header
+     */
+    public int[] highLightBlockHeader(Color color, int row, int col, boolean isError) {
+        // 8 words size of evio header in versions < 6
+        int headerSize = 8;
+
+        int[] blockData = new int[headerSize];
+        // Index of the magic # found in search =
+        // index of last word of block header
+        long lastIndex = getWordIndexOf(row,col);
+
+        for (int i = 0; i < headerSize; i++) {
+            blockData[headerSize - i - 1] = (int) getLongValueAt(lastIndex - i);
+            int[] mrc = getMapRowCol(lastIndex - i);
+
+            // TODO: IS THIS REALLLY NECESSARY??????
+
+            if (mrc == null) {
+                // The beginning of this memory map is somewhere in the middle of a record header.
+                // Undo our recent highlighting.
+                for (int j = 0; j < i; j++) {
+                    int[] mrc2 = getMapRowCol(lastIndex - j);
+                    if (mrc2 != null) {
+                        setMapIndex(mrc2[0]);
+                        dataTableRenderer.removeHighlightCell(mrc2[1], mrc2[2], isError);
+                        fireTableCellUpdated(mrc2[1], mrc2[2]);
+                    }
+                }
+                return null;
+            }
+
+
+            setMapIndex(mrc[0]);
+            dataTableRenderer.setHighlightCell(color, mrc[1], mrc[2], isError);
+            fireTableCellUpdated(mrc[1], mrc[2]);
+        }
+        return blockData;
+    }
+
+
+    /**
+     * Highlight a block header. The given row & col are for
+     * the magic # word of the header. Refresh view.
+     * This used only for evio version 6+ as account must be made for file header.
+     *
+     * @param color1   color of highlight
+     * @param row     row
+     * @param col     column
+     * @param isError true if highlighting an error
+     * @return int array containing all the block header values; null if error or file header
+     */
+    public int[] highLightBlockHeader(Color color1, Color color2, Color color3,
+                                      int row, int col, boolean isError) {
+
+        // Index of the magic # found in search
+        long magicNumIndex = getWordIndexOf(row,col);
+
+        // If at beginning of file, skip over the file header
+        // and the beginning of the first record header
+//System.out.println("highLightBlockHeader: magicIndex = " + magicNumIndex + ", min acceptable index = " +
+//((mappedMemoryHandler.getTotalFileHeaderBytes() + 28)/4));
+        if (mapIndex == 0 && magicNumIndex < (mappedMemoryHandler.getTotalFileHeaderBytes() + 28)/4) {
+            return null;
+        }
+
+        // For evio 6 we want to light the 14 word header differently from
+        // the index array and differently from the user header.
+        // All will be in related colors.
+
+        // Theoretically the usually 14 word header can be longer.
+        // So don't assume anything and read its actual size.
+        int headerSize = (int) getLongValueAt(magicNumIndex - 5);
+        // Index of last word of record header
+        long lastIndex = magicNumIndex + 6 + (headerSize - 14);
+        int[] blockData = new int[headerSize];
+
+        // First do the regular header
+        for (int i = 0; i < headerSize; i++) {
+            blockData[headerSize - i - 1] = (int) getLongValueAt(lastIndex - i);
+            int[] mrc = getMapRowCol(lastIndex - i);
+            if (mrc == null) {
+                return null;
+            }
+            setMapIndex(mrc[0]);
+            dataTableRenderer.setHighlightCell(color1, mrc[1], mrc[2], isError);
+            fireTableCellUpdated(mrc[1], mrc[2]);
+        }
+
+        // Next the index array whose length is always a multiple of 4
+        int indexWords = blockData[RecordHeader.INDEX_ARRAY_OFFSET/4]/4;
+        lastIndex += indexWords;
+        for (int i = 0; i < indexWords; i++) {
+            int[] mrc = getMapRowCol(lastIndex - i);
+            if (mrc == null) {
+                return null;
+            }
+            setMapIndex(mrc[0]);
+            dataTableRenderer.setHighlightCell(color2, mrc[1], mrc[2], isError);
+            fireTableCellUpdated(mrc[1], mrc[2]);
+        }
+
+        // Finally the user header, the length which we round up to the
+        // nearest 4-byte boundary to include padding.
+        int userHdrWords = Utilities.getWords(blockData[RecordHeader.USER_LENGTH_OFFSET/4]);
+        lastIndex += userHdrWords;
+        for (int i = 0; i < userHdrWords; i++) {
+            int[] mrc = getMapRowCol(lastIndex - i);
+            if (mrc == null) {
+                return null;
+            }
+            setMapIndex(mrc[0]);
+            dataTableRenderer.setHighlightCell(color3, mrc[1], mrc[2], isError);
+            fireTableCellUpdated(mrc[1], mrc[2]);
+        }
+
         return blockData;
     }
 
@@ -485,10 +664,9 @@ final class MyTableModel2 extends AbstractTableModel {
 
         // Remember comments are placed into 7th column
         if (col == 6) {
-            if ((comments == null) || comments.size() < row+1) {
-                return "";
-            }
-            return comments.get(row);
+            if (comments == null) return "";
+            if (comments.containsKey(row)) return comments.get(row);
+            return "";
         }
 
         if (!dataFromFile) {
@@ -593,7 +771,7 @@ final class MyTableModel2 extends AbstractTableModel {
      * Get the file word index of the entry at the given row and column.
      * @param row   row
      * @param col   column
-     * @return file word index
+     * @return file word index or 0 if first/last column.
      */
     public long getWordIndexOf(int row, int col) {
         // 1st column is row or integer #
@@ -602,6 +780,67 @@ final class MyTableModel2 extends AbstractTableModel {
         }
 
         return wordOffset + (row * 5) + col - 1;
+    }
+
+    /**
+     * Get the closest file word index of the entry at the given row and column.
+     * This accounts for the first and last columns which don't contain any data.
+     * Those columns will be treated as the last data-containing column.
+     * Row set accordingly.
+     *
+     * @param row   row
+     * @param col   column
+     * @return file word index or 0 if column = 0 and row = 0.
+     */
+    public long getClosestWordIndexOf(int row, int col) {
+        if (row == 0  &&  col == 0) return 0;
+
+        // 1st column is treated as last row's column 5
+        if (col == 0) {
+            col = 5;
+            row--;
+        }
+        // Last column is treated as current row's column 5
+        else if (col == 6) {
+            col = 5;
+        }
+
+        return wordOffset + (row * 5) + col - 1;
+    }
+
+    /**
+     * Get the closest, data-containing, row and col for the given row and column.
+     * This accounts for the first and last columns which don't contain any data.
+     * Those columns will be treated as the last data-containing column.
+     * Row set accordingly.
+     *
+     * @param row   row
+     * @param col   column
+     * @return array containing array[0] = row, and array[1] = col of
+     *         the closest, data-containing, row/col for the given row/column.
+     */
+    public int[] getClosestDataRowCol(int row, int col) {
+        int[] rc = new int[2];
+
+        if (row == 0  &&  col == 0) {
+            // Already zeroed
+            return rc;
+        }
+
+        rc[0] = row;
+        rc[1] = col;
+
+        // 1st column is treated as last row's column 5
+        if (col == 0) {
+            rc[1] = 5;
+            rc[0] = row - 1;
+        }
+        // Last column is treated as current row's column 5
+        else if (col == 6) {
+            rc[1] = 5;
+        }
+
+        return rc;
     }
 
     /** {@inheritDoc} */

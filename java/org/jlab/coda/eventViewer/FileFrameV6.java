@@ -13,6 +13,7 @@ import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -69,18 +70,38 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
     private static Color darkGreen = new Color(0,120,0);
 
     private static Color highlightRed    = new Color(255,220,220);
-    private static Color highlightBlue   = new Color(200,230,255);
     private static Color highlightYellow = new Color(240,240,170);
     private static Color highlightPurple = new Color(230,210,255);
     private static Color highlightCyan   = new Color(190,255,255);
-    private static Color highlightGreen  = new Color(210,250,210);
     private static Color highlightOrange = new Color(255,200,130);
 
+    private static Color highlightGreen1  = new Color(210,250,210);
+    private static Color highlightGreen2  = new Color(175,250,175);
+    private static Color highlightGreen3  = new Color(150,250,150);
+
+    private static Color highlightBlue1  = new Color(220,240,245);
+    private static Color highlightBlue2  = new Color(195,225,245);
+    private static Color highlightBlue3  = new Color(180,210,245);
+
+    //--------------------
     // Normal colors
-    static Color highlightBlkHdr     = highlightGreen;
+    //--------------------
+    // Record or block header and associated index array and user header
+    static Color highlightBlkHdr      = highlightGreen1;
+    static Color highlightBlkHdrIndex = highlightGreen2;
+    static Color highlightBlkHdrUser  = highlightGreen3;
+
+    // File header and associated index array and user header
+    static Color highlightFileHdr      = highlightBlue1;
+    static Color highlightFileHdrIndex = highlightBlue2;
+    static Color highlightFileHdrUser  = highlightBlue3;
+
     static Color highlightEvntHdr    = highlightCyan;
     static Color highlightValue      = highlightYellow;
+
+    //--------------------
     // Error colors
+    //--------------------
     static Color highlightBlkHdrErr  = highlightRed;
     static Color highlightEvntHdrErr = highlightPurple;
     static Color highlightNodeErr    = highlightOrange;
@@ -106,9 +127,10 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
     private ButtonGroup faultRadioGroup;
     private EvioScannerV6 evioFaultScanner;
 
-    // Panels to hold event & block header info
+    // Panels to hold event, block, and file header info
     JPanel eventInfoPanel;
     JPanel blockInfoPanel;
+    JPanel fileInfoPanel;
 
     // Widgets for controlling search & setting value
     private JProgressBar progressBar;
@@ -139,6 +161,7 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
     private SearchTask task;
 
     private int evioVersion;
+    private long magicNumber = ((long)BlockHeader.MAGIC_INT) & 0xffffffffL;
 
 
     /**
@@ -439,7 +462,7 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
         // Set the color
         if (color != null) {
             if (isEvent) {
-                dataTableModel.highLightEventHeader(color, lastSearchedRow, lastSearchedCol, false);
+                dataTableModel.highLightEventHeaderV6(color, lastSearchedRow, lastSearchedCol, false);
             }
             else {
                 dataTableRenderer.setHighlightCell(color, lastSearchedRow, lastSearchedCol, false);
@@ -567,12 +590,13 @@ System.out.println("FOUND val = " + Long.toHexString(findValue) + "!!!, getBLock
 
                             // If we're looking for a block header ...
                             if (getBlock) {
-System.out.println("try to get block data");
-                                blockData = dataTableModel.highLightBlockHeader(highlightBlkHdr,
-                                                                                row, col, false);
-System.out.println("block data =\n" + blockData);
+                                blockData = dataTableModel.highLightBlockHeader(
+                                        highlightBlkHdr,
+                                        highlightBlkHdrIndex,
+                                        highlightBlkHdrUser,
+                                        row, col, false);
                                 if (blockData == null) {
-                                    // Error of some kind
+                                    // Error of some kind or found file header
                                     foundValue = false;
 System.out.println("continue, error in highlightBlockHeader");
                                     continue;
@@ -622,7 +646,6 @@ System.out.println("Do NOT change view");
                             lastFoundRow = row;
                             lastFoundCol = col;
                             lastFoundMap = dataTableModel.getMapIndex();
-System.out.println("Break out down !!!");
                             foundValue = true;
                             break out;
                         }
@@ -636,7 +659,7 @@ System.out.println("Break out down !!!");
                     if (row % 4194304 == 0) {
 System.out.println("set progress");
                         sTask.setTaskProgress(dataTableModel.getRowProgress(row));
-System.out.println("DOne setting progress");
+System.out.println("Done setting progress");
                     }
                 }
             }
@@ -695,10 +718,13 @@ System.out.println("col = " + col);
 
                             // If we're looking for a block header ...
                             if (getBlock) {
-                                blockData = dataTableModel.highLightBlockHeader(highlightBlkHdr,
-                                                                                row, col, false);
+                                blockData = dataTableModel.highLightBlockHeader(
+                                        highlightBlkHdr,
+                                        highlightBlkHdrIndex,
+                                        highlightBlkHdrUser,
+                                        row, col, false);
                                 if (blockData == null) {
-                                    // Error of some kind
+                                    // Error of some kind or found file header
                                     foundValue = false;
                                     continue;
                                 }
@@ -750,7 +776,6 @@ System.out.println("rows viewed = " + numRowsViewed + ", final row = " + (row + 
                             lastFoundCol = col;
                             lastFoundMap = dataTableModel.getMapIndex();
                             foundValue = true;
-System.out.println("Break out up !!!");
                             break out;
                         }
                     }
@@ -944,7 +969,7 @@ System.out.println("Did NOT find val, at top");
      */
     private void handleWordValueSearch(final boolean down, boolean findBlock) {
         setMessage(" ", null, null);
-        long l = 0xc0da0100L;
+        long l = magicNumber;
 
         // If NOT searching for a block ...
         if (!findBlock) {
@@ -972,8 +997,8 @@ System.out.println("Did NOT find val, at top");
         String label = null;
         final long ll = l;
 
-        if (l == 0xc0da0100L) {
-            label = "Block Header";
+        if (l == magicNumber) {
+            label = "Record Header";
         }
 
         // Use swing worker thread to do time-consuming search in the background
@@ -1006,57 +1031,101 @@ System.out.println("Did NOT find val, at top");
         setMessage(" ", null, null);
 
         int[] mapRowCol;
-        EvioHeader node = null;
-        long val, wordIndex;
+        EvioHeader node;
+        long val;
 
         // Where are we now?
         int row = dataTable.getSelectedRow();
         int col = dataTable.getSelectedColumn();
 
-        // If in first(index)/last(comment) column ...
-        if (!dataTableModel.isDataColumn(col)) {
+        // If there is no selection ...
+        if (row < 0 || col < 0) {
+            // Start at first data index
+            row = 0;
+            col = 1;
+        }
 
-            // If starting past the first row & col, error.
-            // Must start at an event.
-            if (row > 0 || col >= dataTableModel.getColumnCount() - 1) {
-                JOptionPane.showMessageDialog(this, "Start at 0 or beginning of known event", "Return",
-                                              JOptionPane.INFORMATION_MESSAGE);
+        // See if we're at the beginning of the file
+        int firstDataIndex = mappedMemoryHandler.getFirstDataIndex();
+        long wordIndex = dataTableModel.getClosestWordIndexOf(row, col);
+        mapRowCol = dataTableModel.getMapRowCol(wordIndex);
+        if (mapRowCol == null) return null;
 
-                return null;
-            }
-            // If no selection made yet (before all rows)
-            else {
-                row = 0;
-                col = 1;
+        // If at beginning of file ...
+        if ((mapRowCol[0] == 0) && (wordIndex < firstDataIndex)) {
+            // Hop over file & first record headers to next int which should be start of an event
+            wordIndex = firstDataIndex;
+//System.out.println("handleEventSearchForward: skip over beginning of file to index = " + firstDataIndex);
+            // Put new cell in view & select
+            scrollToIndex(wordIndex, highlightEvntHdr, true);
+            node = new EvioHeader((int) (dataTableModel.getLongValueAt(wordIndex)),
+                    (int) (dataTableModel.getLongValueAt(wordIndex + 1)),
+                    wordIndex);
+            return node;
+        }
+        else {
+            // If in first(index)/last(comment) column ...
+            if (!dataTableModel.isDataColumn(col)) {
+System.out.println("handleEventSearchForward:  YOU HAVE SELECTED A ROW # or COMMENT column!");
 
-                // Transform row & col into absolute index
-                wordIndex = dataTableModel.getWordIndexOf(row, col);
+                // If starting past the first row & col, error.
+                // Must start at an event.
+                if (row > 0 || col >= dataTableModel.getColumnCount() - 1) {
+                    JOptionPane.showMessageDialog(this, "Start at 0 or beginning of known event", "Return",
+                            JOptionPane.INFORMATION_MESSAGE);
 
-                //----------------------------------------------------------------------
-                // Are we right at the beginning of a block header? If so, move past it.
-                //----------------------------------------------------------------------
-                mapRowCol = dataTableModel.getMapRowCol(wordIndex + 7);
-
-                // First make sure we getting our data from the
-                // correct (perhaps next) memory mapped buffer.
-                dataTableModel.setMapIndex(mapRowCol[0]);
-
-                // Look forward 7 words to possible magic #
-                val = dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2]);
-
-                // If it is indeed a magic number, there is a block header at very beginning
-                if (val == 0xc0da0100L) {
-                    searchDone = true;
-                    // Hop over block header to next int which should be start of an event
-                    wordIndex += 8;
-                    // Put new cell in view & select
-                    scrollToIndex(wordIndex, highlightEvntHdr, true);
-                    node = new EvioHeader((int) (dataTableModel.getLongValueAt(wordIndex)),
-                                          (int) (dataTableModel.getLongValueAt(wordIndex + 1)),
-                                          wordIndex);
-                    return node;
+                    return null;
                 }
-                //---------------------------------------------------------------
+                // If no selection made yet (before all rows)
+                else {
+
+                    // Note: we won't end up here if we're at the very beginning of the file
+                    // row = 0 & col = 1 if no selection made
+
+                    // Transform row & col into absolute index
+                    wordIndex = dataTableModel.getWordIndexOf(row, col);
+
+                    //---------------------¬-------------------------------------------------
+                    // Are we right at the beginning of a header? If so, move past it.
+                    //----------------------------------------------------------------------
+                    mapRowCol = dataTableModel.getMapRowCol(wordIndex + 7);
+
+                    // First make sure we getting our data from the
+                    // correct (perhaps next) memory mapped buffer.
+                    dataTableModel.setMapIndex(mapRowCol[0]);
+
+                    // Look forward 7 words to possible magic #
+                    val = dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2]);
+
+                    // If it is indeed a magic number, there is a block header at very beginning
+                    if (val == magicNumber) {
+                        searchDone = true;
+
+                        // Find out the size of the record header and hop over it.
+                        // To do this we need to read the header size, the index array size and the user header size.
+                        mapRowCol = dataTableModel.getMapRowCol(wordIndex + 2);
+                        long headerWords = dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2]);
+
+                        mapRowCol = dataTableModel.getMapRowCol(wordIndex + 4);
+                        long arrayWords = dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2])/4;
+
+                        mapRowCol = dataTableModel.getMapRowCol(wordIndex + 6);
+                        long userHdrWords = Utilities.getWords((int)dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2]));
+
+                        long totalWords = headerWords + arrayWords + userHdrWords;
+
+                        wordIndex += totalWords;
+System.out.println("handleEventSearchForward: skip forward " + totalWords + " words");
+
+                        // Put new cell in view & select
+                        scrollToIndex(wordIndex, highlightEvntHdr, true);
+                        node = new EvioHeader((int) (dataTableModel.getLongValueAt(wordIndex)),
+                                (int) (dataTableModel.getLongValueAt(wordIndex + 1)),
+                                wordIndex);
+                        return node;
+                    }
+                    //---------------------------------------------------------------
+                }
             }
         }
 
@@ -1065,7 +1134,7 @@ System.out.println("Did NOT find val, at top");
         //-----------------------------------------------
 
         // Highlight selected event header len & next word
-        dataTableModel.highLightEventHeader(highlightEvntHdr, row, col, false);
+        dataTableModel.highLightEventHeaderV6(highlightEvntHdr, row, col, false);
 
         // Transform row & col into absolute index
         wordIndex = dataTableModel.getWordIndexOf(row,col);
@@ -1121,8 +1190,19 @@ System.out.println("Did NOT find val, at top");
 //        ", c = " + mapRowCol[2] + ", val = " + val + ", in hex 0x" + Long.toHexString(val));
 
         // If we're at the front of block header, hop past it
-        if (val == 0xc0da0100L) {
-            wordIndex += 8;
+        if (val == magicNumber) {
+            mapRowCol = dataTableModel.getMapRowCol(wordIndex + 2);
+            long headerWords = dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2]);
+
+            mapRowCol = dataTableModel.getMapRowCol(wordIndex + 4);
+            long arrayWords = dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2])/4;
+
+            mapRowCol = dataTableModel.getMapRowCol(wordIndex + 6);
+            long userHdrWords = Utilities.getWords((int)dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2]));
+
+            long totalWords = headerWords + arrayWords + userHdrWords;
+System.out.println("handleEventSearchForward: Found a record header!! skip forward " + totalWords + " words");
+            wordIndex += totalWords;
         }
         //---------------------------------------------------------------
 
@@ -1527,7 +1607,7 @@ System.out.println("Did NOT find val, at top");
         Border lineBorder = BorderFactory.createLineBorder(Color.blue);
         Border compound = BorderFactory.createCompoundBorder(lineBorder, null);
         compound = BorderFactory.createTitledBorder(
-                          compound, "Block Info",
+                          compound, "Record Info",
                           TitledBorder.CENTER,
                           TitledBorder.TOP, null, Color.blue);
 
@@ -1586,6 +1666,109 @@ System.out.println("Did NOT find val, at top");
         // Add to control panel
         controlPanel.add(Box.createVerticalStrut(10));
         controlPanel.add(blockInfoPanel);
+        controlPanel.revalidate();
+        controlPanel.repaint();
+    }
+
+
+    /**
+     * Method to update panel containing file header info.
+     * @param header object containing file header info.
+     */
+    private void updateFileInfoPanel(FileHeader header) {
+        if (header == null || fileInfoPanel == null) {return;}
+
+        ((JLabel)(fileInfoPanel.getComponent(1))).setText("0x"  + Integer.toHexString(header.getFileId()));
+        ((JLabel)(fileInfoPanel.getComponent(3))).setText(""  + header.getHeaderType());
+        ((JLabel)(fileInfoPanel.getComponent(5))).setText(""  + header.getFileNumber());
+        ((JLabel)(fileInfoPanel.getComponent(7))).setText(""  + header.getHeaderLength());
+        ((JLabel)(fileInfoPanel.getComponent(9))).setText(""  + header.getEntries());
+        ((JLabel)(fileInfoPanel.getComponent(11))).setText("" + header.getIndexLength());
+
+        ((JLabel)(fileInfoPanel.getComponent(13))).setText("" + header.getVersion());
+        ((JLabel)(fileInfoPanel.getComponent(15))).setText("" + header.hasDictionary());
+        ((JLabel)(fileInfoPanel.getComponent(17))).setText("" + header.hasFirstEvent());
+        ((JLabel)(fileInfoPanel.getComponent(19))).setText("" + header.hasTrailerWithIndex());
+
+        ((JLabel)(fileInfoPanel.getComponent(21))).setText("" + header.getUserHeaderLength());
+        ((JLabel)(fileInfoPanel.getComponent(23))).setText("0x" + Long.toHexString(header.getUserRegister()));
+        ((JLabel)(fileInfoPanel.getComponent(25))).setText("" + header.getTrailerPosition());
+        ((JLabel)(fileInfoPanel.getComponent(27))).setText("0x" + Integer.toHexString(header.getUserIntFirst()));
+        ((JLabel)(fileInfoPanel.getComponent(29))).setText("0x" + Integer.toHexString(header.getUserIntSecond()));
+    }
+
+
+    /**  Method to add panel containing block header info to gui. */
+    private void addFileInfoPanel() {
+        if (fileInfoPanel != null) {
+            return;
+        }
+
+        Border blkLineBorder = BorderFactory.createLineBorder(Color.black);
+        Border lineBorder = BorderFactory.createLineBorder(Color.blue);
+        Border compound = BorderFactory.createCompoundBorder(lineBorder, null);
+        compound = BorderFactory.createTitledBorder(
+                compound, "File Info",
+                TitledBorder.CENTER,
+                TitledBorder.TOP, null, Color.blue);
+
+
+        fileInfoPanel = new JPanel();
+        fileInfoPanel.setLayout(new GridLayout(15,2,5,2));
+        fileInfoPanel.setBorder(compound);
+
+        int labelCount = 30;
+        JLabel[] labels = new JLabel[labelCount];
+        labels[0]  = new JLabel("File ID  ");
+        labels[2]  = new JLabel("File type  ");
+        labels[4]  = new JLabel("File split #  ");
+        labels[6]  = new JLabel("Header words  ");
+        labels[8]  = new JLabel("Record count  ");
+        labels[10] = new JLabel("Index array bytes  ");
+        labels[12] = new JLabel("Evio version  ");
+        labels[14] = new JLabel("Has dictionary  ");
+        labels[16] = new JLabel("Has first event  ");
+        labels[18] = new JLabel("Has trailer & index  ");
+
+        labels[20] = new JLabel("User header bytes  ");
+        labels[22] = new JLabel("User register  ");
+        labels[24] = new JLabel("Trailer position  ");
+        labels[26] = new JLabel("User int 1  ");
+        labels[28] = new JLabel("User int 2  ");
+
+        labels[1]  = new JLabel("");
+        labels[3]  = new JLabel("");
+        labels[5]  = new JLabel("");
+        labels[7]  = new JLabel("");
+        labels[9]  = new JLabel("");
+        labels[11] = new JLabel("");
+        labels[13] = new JLabel("");
+        labels[15] = new JLabel("");
+        labels[17] = new JLabel("");
+        labels[19] = new JLabel("");
+        labels[21] = new JLabel("");
+        labels[23] = new JLabel("");
+        labels[25] = new JLabel("");
+        labels[27] = new JLabel("");
+        labels[29] = new JLabel("");
+
+        for (int i=0; i < labelCount; i++) {
+            labels[i].setOpaque(true);
+            if (i%2 == 1) {
+                labels[i].setBackground(Color.white);
+                labels[i].setForeground(darkGreen);
+                labels[i].setBorder(blkLineBorder);
+            }
+            else {
+                labels[i].setHorizontalAlignment(SwingConstants.RIGHT);
+            }
+
+            fileInfoPanel.add(labels[i]);
+        }
+
+        // Add to control panel
+        controlPanel.add(Box.createVerticalStrut(10));
+        controlPanel.add(fileInfoPanel);
         controlPanel.revalidate();
         controlPanel.repaint();
     }
@@ -1821,7 +2004,10 @@ System.out.println("Did NOT find val, at top");
                 new EmptyBorder(5, 5, 5, 5));
         keyPanel.setBorder(border);
 
+        // Border for labels
         Border blkLineBorder = BorderFactory.createLineBorder(Color.gray);
+
+        // Border for Color key pannel
         Border lineBorder = BorderFactory.createLineBorder(Color.blue);
         Border compound = BorderFactory.createCompoundBorder(lineBorder, null);
         compound = BorderFactory.createTitledBorder(
@@ -1829,34 +2015,94 @@ System.out.println("Did NOT find val, at top");
                           TitledBorder.CENTER,
                           TitledBorder.TOP, null, Color.blue);
 
+        // Border for Record Header panel
+        Border compoundRec = BorderFactory.createCompoundBorder(lineBorder, null);
+        compoundRec = BorderFactory.createTitledBorder(
+                compoundRec, "Record Normal",
+                TitledBorder.CENTER,
+                TitledBorder.TOP, null, Color.blue);
+
+        // Border for File Header panel
+        Border compoundFile = BorderFactory.createCompoundBorder(lineBorder, null);
+        compoundFile = BorderFactory.createTitledBorder(
+                compoundFile, "File",
+                TitledBorder.CENTER,
+                TitledBorder.TOP, null, Color.blue);
+
 
         JPanel keyInfoPanel = new JPanel();
-        keyInfoPanel.setLayout(new GridLayout(7,1,5,2));
+        //keyInfoPanel.setLayout(new GridLayout(8,1,5,2));
+        keyInfoPanel.setLayout(new BoxLayout(keyInfoPanel, BoxLayout.Y_AXIS));
         keyInfoPanel.setBorder(compound);
 
 
-        JLabel[] labels = new JLabel[7];
-        labels[0]  = new JLabel("Block normal");
-        labels[1]  = new JLabel("Event normal");
-        labels[2]  = new JLabel("Block with error");
-        labels[3]  = new JLabel("Event with error");
-        labels[4]  = new JLabel("Evio struct error");
-        labels[5]  = new JLabel("Word value");
-        labels[6]  = new JLabel("Current selection");
+        JLabel[] labels = new JLabel[12];
+        labels[0]  = new JLabel("Header");
+        labels[1]  = new JLabel("Index array");
+        labels[2]  = new JLabel("User header");
 
-        labels[0].setBackground(highlightBlkHdr);
-        labels[1].setBackground(highlightEvntHdr);
-        labels[2].setBackground(highlightBlkHdrErr);
-        labels[3].setBackground(highlightEvntHdrErr);
-        labels[4].setBackground(highlightNodeErr);
-        labels[5].setBackground(highlightValue);
-        labels[6].setBackground(Color.yellow);
+        labels[3]  = new JLabel("Header");
+        labels[4]  = new JLabel("Index array");
+        labels[5]  = new JLabel("User header");
 
-        for (int i=0; i < 7; i++) {
+        labels[6]  = new JLabel("Event normal");
+        labels[7]  = new JLabel("Word value");
+        labels[8]  = new JLabel("Current selection");
+
+        labels[9]  = new JLabel("Record with error");
+        labels[10] = new JLabel("Event with error");
+        labels[11] = new JLabel("Evio struct error");
+
+        labels[0].setBackground(highlightFileHdr);
+        labels[1].setBackground(highlightFileHdrIndex);
+        labels[2].setBackground(highlightFileHdrUser);
+
+        labels[3].setBackground(highlightBlkHdr);
+        labels[4].setBackground(highlightBlkHdrIndex);
+        labels[5].setBackground(highlightBlkHdrUser);
+
+        labels[6].setBackground(highlightEvntHdr);
+        labels[7].setBackground(highlightValue);
+        labels[8].setBackground(Color.yellow);
+
+        labels[9].setBackground(highlightBlkHdrErr);
+        labels[10].setBackground(highlightEvntHdrErr);
+        labels[11].setBackground(highlightNodeErr);
+
+
+        JPanel keyFileHeader = new JPanel();
+        keyFileHeader.setLayout(new GridLayout(3,1,5,2));
+        keyFileHeader.setBorder(compoundFile);
+        keyFileHeader.add(labels[0]);
+        keyFileHeader.add(labels[1]);
+        keyFileHeader.add(labels[2]);
+
+
+        JPanel keyRecordHeader = new JPanel();
+        keyRecordHeader.setLayout(new GridLayout(3,1,5,2));
+        keyRecordHeader.setBorder(compoundRec);
+        keyRecordHeader.add(labels[3]);
+        keyRecordHeader.add(labels[4]);
+        keyRecordHeader.add(labels[5]);
+
+
+        JPanel theRest = new JPanel();
+        theRest.setLayout(new GridLayout(6,1,5,6));
+        for (int i=6; i < 12; i++) {
+            theRest.add(labels[i]);
+        }
+
+        for (int i=0; i < 12; i++) {
             labels[i].setOpaque(true);
             labels[i].setBorder(blkLineBorder);
-            keyInfoPanel.add(labels[i]);
         }
+
+        keyInfoPanel.add(Box.createRigidArea(new Dimension(0,15)));
+        keyInfoPanel.add(keyFileHeader);
+        keyInfoPanel.add(Box.createRigidArea(new Dimension(0,15)));
+        keyInfoPanel.add(keyRecordHeader);
+        keyInfoPanel.add(Box.createRigidArea(new Dimension(0,15)));
+        keyInfoPanel.add(theRest);
 
         // Add to control panel
         keyPanel.add(keyInfoPanel, BorderLayout.NORTH);
@@ -1877,6 +2123,13 @@ System.out.println("Did NOT find val, at top");
                 BorderFactory.createEtchedBorder(EtchedBorder.LOWERED),
                 new EmptyBorder(5,5,5,5));
         controlPanel.setBorder(border);
+
+        //-------------------------------
+        // Put file header data in this pannel
+        //-------------------------------
+
+        addFileInfoPanel();
+        controlPanel.add(fileInfoPanel);
 
         //-------------------------------
         // Put radio boxes in this panel
@@ -1912,7 +2165,7 @@ System.out.println("Did NOT find val, at top");
         pageScrollButton.setMnemonic(KeyEvent.VK_F);
         pageScrollButton.setActionCommand("3");
 
-        evioBlockButton = new JRadioButton("Evio Block");
+        evioBlockButton = new JRadioButton("Evio Record");
         evioBlockButton.setMnemonic(KeyEvent.VK_B);
         evioBlockButton.setActionCommand("4");
 
@@ -2293,6 +2546,24 @@ System.out.println("Did NOT find val, at top");
             return;
         }
 
+        // Get the file endian right
+        ByteOrder actualOrder = mappedMemoryHandler.getOrder();
+        if (actualOrder != order) {
+            if (actualOrder == ByteOrder.LITTLE_ENDIAN) {
+                switchMenuItem.setText("To big endian");
+            }
+            else {
+                switchMenuItem.setText("To little endian");
+            }
+            order = actualOrder;
+        }
+
+        // Read and fill the file header data
+        FileHeader fh = mappedMemoryHandler.getFileHeader();
+        if (fh != null) {
+            updateFileInfoPanel(fh);
+        }
+
         // Set up the table widget for displaying data
         dataTableModel = new MyTableModel2(mappedMemoryHandler, comments, evioVersion);
         dataTable = new JTable(dataTableModel);
@@ -2362,6 +2633,14 @@ System.out.println("Did NOT find val, at top");
         panel.add(tablePane, BorderLayout.CENTER);
 
         this.add(panel, BorderLayout.CENTER);
+
+        // highlight the file header
+        dataTableModel.highLightFileHeader(highlightFileHdr,
+                                           highlightFileHdrIndex,
+                                           highlightFileHdrUser,
+                                           mappedMemoryHandler.getFileHeader().getHeaderLength()/4,
+                                           mappedMemoryHandler.getFileHeader().getIndexLength()/4,
+                                           mappedMemoryHandler.getFileHeader().getUserHeaderLengthWords());
     }
 
 
