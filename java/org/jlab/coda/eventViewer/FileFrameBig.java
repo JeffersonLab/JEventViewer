@@ -8,6 +8,7 @@ import org.jlab.coda.jevio.EvioException;
 import javax.swing.*;
 import javax.swing.UIManager.LookAndFeelInfo;
 import javax.swing.border.*;
+import javax.swing.table.DefaultTableCellRenderer;
 import java.awt.*;
 import java.awt.event.*;
 import java.beans.PropertyChangeEvent;
@@ -36,7 +37,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
     private JScrollPane tablePane;
 
     /** Remember comments placed into 7th column of table. */
-    private HashMap<Integer,String> comments = new HashMap<Integer,String>();
+    private HashMap<String,String> comments = new HashMap<String,String>();
 
     /** Store results of forward event searches to enable backwards ones. */
     private TreeMap<Long,EvioHeader> eventMap = new TreeMap<Long,EvioHeader>();
@@ -61,18 +62,18 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
     private JPanel controlPanel;
     private JPanel errorPanel;
-    private static int controlPanelWidth = 220;
+    private final static int controlPanelWidth = 220;
 
     // Colors
-    private static Color darkGreen = new Color(0,120,0);
+    private final static Color darkGreen = new Color(0,120,0);
 
-    private static Color highlightRed    = new Color(255,220,220);
-    private static Color highlightBlue   = new Color(200,230,255);
-    private static Color highlightYellow = new Color(240,240,170);
-    private static Color highlightPurple = new Color(230,210,255);
-    private static Color highlightCyan   = new Color(190,255,255);
-    private static Color highlightGreen  = new Color(210,250,210);
-    private static Color highlightOrange = new Color(255,200,130);
+    private final static Color highlightRed    = new Color(255,220,220);
+    private final static Color highlightBlue   = new Color(200,230,255);
+    private final static Color highlightYellow = new Color(240,240,170);
+    private final static Color highlightPurple = new Color(230,210,255);
+    private final static Color highlightCyan   = new Color(190,255,255);
+    private final static Color highlightGreen  = new Color(210,250,210);
+    private final static Color highlightOrange = new Color(255,200,130);
 
     // Normal colors
     static Color highlightBlkHdr     = highlightGreen;
@@ -136,7 +137,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
     /** Thread to handle search in background. */
     private SearchTask task;
 
-    private int evioVersion;
+    private final int evioVersion;
 
 
 
@@ -465,13 +466,13 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
      * @param findValue value of word to find
      * @param getBlock  return the 7 words prior to & also the found value (8 words total).
      *                  Used when finding block headers.
-     * @param comments  comments to add to found value's row
+     * @param comment   comment to add to found value's row
      * @param task      object used to update progress of search
      *
      * @return previous 7 ints of found value if getPrevData arg is {@code true}
      */
     private int[] scrollToAndHighlight(boolean down, long findValue, boolean getBlock,
-                                      String comments, SearchTask task) {
+                                      String comment, SearchTask task) {
         JViewport viewport = tablePane.getViewport();
 
         // The location of the viewport relative to the table
@@ -585,8 +586,8 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                             }
 
                             // Mark it in comments
-                            if (comments != null) {
-                                dataTableModel.setValueAt(comments, row, 6);
+                            if (comment != null) {
+                                dataTableModel.setValueAt(comment, row, 6);
                             }
 
                             // Y position of row with found value
@@ -705,8 +706,8 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
 
                             // Mark it in comments
-                            if (comments != null) {
-                                dataTableModel.setValueAt(comments, row, 6);
+                            if (comment != null) {
+                                dataTableModel.setValueAt(comment, row, 6);
                             }
 
                             // Y position of row with found value
@@ -1067,6 +1068,8 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                 JOptionPane.QUESTION_MESSAGE, null, null, null);
 
             if (n != JOptionPane.OK_OPTION) {
+                // undo any highlight
+                dataTableModel.clearHighLightEventHeader(row, col);
                 return null;
             }
         }
@@ -2279,6 +2282,25 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         // Cannot allow re-ordering of data !!!
         dataTable.getTableHeader().setReorderingAllowed(false);
 
+        // Define class to get the text alignment of table header correct
+        class MyRender extends DefaultTableCellRenderer {
+            @Override
+            public Component getTableCellRendererComponent(JTable table,Object value,boolean isSelected,boolean hasFocus,int row,int column) {
+                super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+                if (column == 0) {
+                    setHorizontalAlignment(SwingConstants.RIGHT);
+                } else if (column == 6) {
+                    setHorizontalAlignment(SwingConstants.LEFT);
+                } else {
+                    setHorizontalAlignment(SwingConstants.CENTER);
+                }
+                return this;
+            }
+        }
+
+        MyRender tableHeaderRenderer = new MyRender();
+        dataTable.getTableHeader().setDefaultRenderer(tableHeaderRenderer);
+
         // Start searching from mouse-clicked cell
         dataTable.addMouseListener(
                 new MouseListener() {
@@ -2334,6 +2356,10 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         panel.add(tablePane, BorderLayout.CENTER);
 
         this.add(panel, BorderLayout.CENTER);
+
+        // highlight the first block header to start things out
+        comments.put("0:1", "Block Header");
+        dataTableModel.highLightBlockHeader(highlightBlkHdr, 1, 3, false);
     }
 
 
