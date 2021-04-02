@@ -73,14 +73,14 @@ public class ReadWriteTest {
         int tag  = 0x1234;
         int type = 0x10;  // contains evio banks
         int num  = 0x12;
-        int secondWord = tag << 16 | type << 4 | num;
+        int secondWord = tag << 16 | type << 8 | num;
 
         evioDataBuf.putInt(secondWord);  // 2nd evio header word
 
         // now put in a bank of ints
         evioDataBuf.putInt(1+dataWords);  // bank of ints length in words
         tag = 0x5678; type = 0x1; num = 0x56;
-        secondWord = tag << 16 | type << 4 | num;
+        secondWord = tag << 16 | type << 8 | num;
         evioDataBuf.putInt(secondWord);  // 2nd evio header word
 
         // Int data
@@ -107,14 +107,15 @@ public class ReadWriteTest {
         byte[] firstEvent = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
         int firstEventLen = 10;
         boolean addTrailerIndex = true;
-        ByteOrder order = ByteOrder.BIG_ENDIAN;
+        //ByteOrder order = ByteOrder.BIG_ENDIAN;
+        ByteOrder order = ByteOrder.LITTLE_ENDIAN;
         //CompressionType compType = CompressionType.RECORD_COMPRESSION_GZIP;
         CompressionType compType = CompressionType.RECORD_UNCOMPRESSED;
 
         // Create files
         String directory = null;
         int runNum = 123;
-        long split = 1000; // 1K
+        long split = 0; // 1K
         int maxRecordSize = 0; // 0 -> use default
         int maxEventCount = 4; // 0 -> use default
         boolean overWriteOK = true;
@@ -143,7 +144,7 @@ public class ReadWriteTest {
             order = writer.getByteOrder();
 
             // Create an event containing a bank of ints (100 bytes)
-            ByteBuffer evioDataBuf = generateEvioBuffer(order, 21);
+            ByteBuffer evioDataBuf = generateEvioBuffer(order, 184);
 
             do {
                 // event in evio format
