@@ -160,6 +160,16 @@ final class MyRenderer2 extends DefaultTableCellRenderer {
                                                    boolean isSelected, boolean hasFocus,
                                                    int row, int column) {
 
+        if (column == 0) {
+            setHorizontalAlignment(SwingConstants.RIGHT);
+        }
+        else if (column == 6) {
+            setHorizontalAlignment(SwingConstants.LEFT);
+        }
+        else {
+            setHorizontalAlignment(SwingConstants.CENTER);
+        }
+
         if (!isSelected) {
             if ((row+1)%nthRow == 0) {
                 super.setBackground(alternateRowColor);
