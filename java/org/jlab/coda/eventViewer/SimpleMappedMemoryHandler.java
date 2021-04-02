@@ -26,7 +26,8 @@ public class SimpleMappedMemoryHandler {
     private long fileSize;
 
     /** Max map size in bytes (1GB) */
-    private final long maxMapSize = 1000000000L;
+    //private final long maxMapSize = 1000000000L;
+    private long maxMapSize = 4052L;
 
     /** Byte order of data in buffer. */
     private ByteOrder order;
@@ -90,12 +91,18 @@ public class SimpleMappedMemoryHandler {
         long sz, offset = 0L;
         ByteBuffer memoryMapBuf;
 
+        // Ensure that the map size is a multiple of 20 bytes (1 row)
+        // so things don't get impossible to deal with
+        if ((maxMapSize % 20) != 0) {
+            maxMapSize = 20*(maxMapSize/20);
+        }
+
         // Divide the memory into chunks or regions
         while (remainingSize > 0) {
             // Break into chunks of maxMapSize bytes
             sz = Math.min(remainingSize, maxMapSize);
-System.out.println("mmapHandler: remaining size = " + remainingSize +
-                   ", map size = " + sz + ", mapCount = " + mapCount);
+//System.out.println("mmapHandler: remaining size = " + remainingSize +
+//                   ", map size = " + sz + ", mapCount = " + mapCount);
 
             memoryMapBuf = fileChannel.map(FileChannel.MapMode.READ_ONLY, offset, sz);
             memoryMapBuf.order(order);
@@ -145,9 +152,9 @@ System.out.println("mmapHandler: remaining size = " + remainingSize +
                 // Parse the buffer and store it in fields.
                 recHeader.readHeader(firstRecordHdr, 0);
                 firstDataIndex = (fileHeaderBytes + recHeader.getTotalHeaderLength())/4;
-System.out.println("mmapHandler: fileHeaderBytes = " + fileHeaderBytes);
-System.out.println("mmapHandler: recordHeaderTotalLen = " + recHeader.getTotalHeaderLength());
-System.out.println("mmapHandler: firstDataIndex = " + firstDataIndex);
+//System.out.println("mmapHandler: fileHeaderBytes = " + fileHeaderBytes);
+//System.out.println("mmapHandler: recordHeaderTotalLen = " + recHeader.getTotalHeaderLength());
+//System.out.println("mmapHandler: firstDataIndex = " + firstDataIndex);
             }
 
             // If the actual order is not what it was initially set to, fix it
