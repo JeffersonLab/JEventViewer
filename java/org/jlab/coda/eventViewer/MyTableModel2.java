@@ -24,7 +24,7 @@ final class MyTableModel2 extends AbstractTableModel {
     private MyRenderer2 dataTableRenderer;
 
     /** Remember comments placed into 7th column of table. */
-    private HashMap<Integer,String> comments;
+    private HashMap<String,String> comments;
 
     /** Offset in bytes from beginning of file to
      * beginning of map currently being viewed. */
@@ -81,19 +81,19 @@ final class MyTableModel2 extends AbstractTableModel {
 
     /** Constructor used for viewing event in tree form in EventTreePanel. */
     public MyTableModel2() {
-        this.comments = new HashMap<Integer,String>();
+        this.comments = new HashMap<String,String>();
     }
 
     /** Constructor used for viewing event in tree form in EventTreePanel. */
     public MyTableModel2(int version) {
         evioVersion = version;
-        this.comments = new HashMap<Integer,String>();
+        this.comments = new HashMap<String,String>();
     }
 
 
     /** Constructor used for viewing memory mapped file in FileFrame. */
     public MyTableModel2(SimpleMappedMemoryHandler mappedMemoryHandler,
-                         HashMap<Integer,String> comments, int version) {
+                         HashMap<String,String> comments, int version) {
 
         evioVersion = version;
         this.fileSize = mappedMemoryHandler.getFileSize();
@@ -307,6 +307,7 @@ final class MyTableModel2 extends AbstractTableModel {
         fireTableCellUpdated(row, col);
     }
 
+
     /**
      * Highlight an event header. The given row & col are for
      * the first word of the header. Refresh view.
@@ -316,12 +317,21 @@ final class MyTableModel2 extends AbstractTableModel {
      * @param isError true if highlighting an error
      */
     public void highLightEventHeader(Color color, int row, int col, boolean isError) {
+
+        if (evioVersion > 5) {
+            // Ignore the file header and the beginning of the first record header
+            long entryIndex = getWordIndexOf(row,col);
+            if (mapIndex == 0 && entryIndex < mappedMemoryHandler.getFirstDataIndex()) {
+                return;
+            }
+        }
+
         // Highlight starting point
         dataTableRenderer.setHighlightCell(color, row, col, isError);
         fireTableCellUpdated(row, col);
         // Also highlight the next (tag/num) header word, but
-        // not if we're starting at pos = 0, col 0
-        if (col != 0) {
+        // not if we're starting in non-data col
+        if (isDataColumn(col)) {
             long pos  = getWordIndexOf(row, col);
             int[] mrc = getMapRowCol(pos + 1);
             if (mrc == null) return;
@@ -331,40 +341,36 @@ final class MyTableModel2 extends AbstractTableModel {
         }
     }
 
+
     /**
-     * Highlight an event header. The given row & col are for
-     * the first word of the header. Refresh view.
-     * For evio versions 6+ only.
-     * @param color   color of highlight
+     * Remove the highlight of given table entry along with the next one.
+     * Refresh view.
      * @param row     row
      * @param col     column
-     * @param isError true if highlighting an error
      */
-    public void highLightEventHeaderV6(Color color, int row, int col, boolean isError) {
-
-        // Index of the magic # found in search
+    public void clearHighLightEventHeader(int row, int col) {
         long entryIndex = getWordIndexOf(row,col);
 
-        // Ignore the file header and the beginning of the first record header
-System.out.println("highLightBlockHeader: entryIndex = " + entryIndex + ", min acceptable index = " +
-mappedMemoryHandler.getFirstDataIndex());
-        if (mapIndex == 0 && entryIndex < mappedMemoryHandler.getFirstDataIndex()) {
-            return;
+        if (evioVersion > 5) {
+            // Ignore the file header and the beginning of the first record header
+            if (mapIndex == 0 && entryIndex < mappedMemoryHandler.getFirstDataIndex()) {
+                return;
+            }
         }
 
-        // Highlight starting point
-        dataTableRenderer.setHighlightCell(color, row, col, isError);
+        // First the chosen cell
+        dataTableRenderer.removeHighlightCell(row, col, false);
         fireTableCellUpdated(row, col);
-        // Also highlight the next (tag/num) header word, but
-        // not if we're starting at pos = 0, col 0
-        if (col != 0) {
-            long pos  = getWordIndexOf(row, col);
-            int[] mrc = getMapRowCol(pos + 1);
-            if (mrc == null) return;
-            setMapIndex(mrc[0]);
-            dataTableRenderer.setHighlightCell(color, mrc[1], mrc[2], isError);
-            fireTableCellUpdated(mrc[1], mrc[2]);
+
+        // Now the next cell
+        entryIndex++;
+        int[] mrc = getMapRowCol(entryIndex);
+        if (mrc == null) {
+            return;
         }
+        setMapIndex(mrc[0]);
+        dataTableRenderer.removeHighlightCell(mrc[1], mrc[2], false);
+        fireTableCellUpdated(mrc[1], mrc[2]);
     }
 
 
@@ -424,7 +430,8 @@ mappedMemoryHandler.getFirstDataIndex());
             dataTableRenderer.setHighlightCell(color3, mrc[1], mrc[2], false);
         }
 
-        setValueAt("File Header", 1, 6);
+        // Put comment in first map, second row
+        comments.put("0:1", "File Header");
         fireTableRowsUpdated(0, totalRows-1);
     }
 
@@ -452,23 +459,9 @@ mappedMemoryHandler.getFirstDataIndex());
         for (int i = 0; i < headerSize; i++) {
             blockData[headerSize - i - 1] = (int) getLongValueAt(lastIndex - i);
             int[] mrc = getMapRowCol(lastIndex - i);
-
-            // TODO: IS THIS REALLLY NECESSARY??????
-
             if (mrc == null) {
-                // The beginning of this memory map is somewhere in the middle of a record header.
-                // Undo our recent highlighting.
-                for (int j = 0; j < i; j++) {
-                    int[] mrc2 = getMapRowCol(lastIndex - j);
-                    if (mrc2 != null) {
-                        setMapIndex(mrc2[0]);
-                        dataTableRenderer.removeHighlightCell(mrc2[1], mrc2[2], isError);
-                        fireTableCellUpdated(mrc2[1], mrc2[2]);
-                    }
-                }
                 return null;
             }
-
 
             setMapIndex(mrc[0]);
             dataTableRenderer.setHighlightCell(color, mrc[1], mrc[2], isError);
@@ -665,7 +658,8 @@ mappedMemoryHandler.getFirstDataIndex());
         // Remember comments are placed into 7th column
         if (col == 6) {
             if (comments == null) return "";
-            if (comments.containsKey(row)) return comments.get(row);
+            String key = mapIndex + ":" + row;
+            if (comments.containsKey(key)) return comments.get(key);
             return "";
         }
 
@@ -857,7 +851,7 @@ mappedMemoryHandler.getFirstDataIndex());
     /** {@inheritDoc}. Only used to set comments. */
     public void setValueAt(Object value, int row, int col) {
         if (col == 6) {
-            comments.put(row, (String)value);
+            comments.put(mapIndex + ":" + row, (String)value);
         }
         fireTableCellUpdated(row, col);
     }
