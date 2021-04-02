@@ -349,6 +349,8 @@ public class EventTreePanelv6 extends JPanel implements TreeSelectionListener {
         renderer.setTableModel((MyTableModel2) dataTable.getModel());
         dataTable.setDefaultRenderer(String.class, renderer);
         dataTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        // Set the table header's text right aligned
+        ((DefaultTableCellRenderer)dataTable.getTableHeader().getDefaultRenderer()).setHorizontalAlignment(SwingConstants.RIGHT);
         // Set the font to one that's fixed-width
         Font newFont = new Font(Font.MONOSPACED, Font.PLAIN, dataTable.getFont().getSize());
         dataTable.setFont(newFont);
