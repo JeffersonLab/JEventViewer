@@ -7,13 +7,13 @@ import org.jlab.coda.hipo.*;
 import javax.swing.*;
 import javax.swing.UIManager.LookAndFeelInfo;
 import javax.swing.border.*;
+import javax.swing.table.DefaultTableCellRenderer;
 import java.awt.*;
 import java.awt.event.*;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.io.File;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -38,11 +38,12 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
     /** Widget allowing scrolling of table widget. */
     private JScrollPane tablePane;
 
-    /** Remember comments placed into 7th column of table. */
-    private HashMap<Integer,String> comments = new HashMap<Integer,String>();
+    /** Remember comments placed into 7th column of table.
+     *  The key is of the form map#:row# . */
+    private final HashMap<String,String> comments = new HashMap<String,String>();
 
     /** Store results of forward event searches to enable backwards ones. */
-    private TreeMap<Long,EvioHeader> eventMap = new TreeMap<Long,EvioHeader>();
+    private final TreeMap<Long,EvioHeader> eventMap = new TreeMap<Long,EvioHeader>();
 
     /** Look at file in big endian order by default. */
     private ByteOrder order = ByteOrder.BIG_ENDIAN;
@@ -64,24 +65,24 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
 
     private JPanel controlPanel;
     private JPanel errorPanel;
-    private static int controlPanelWidth = 220;
+    private final static int controlPanelWidth = 220;
 
     // Colors
-    private static Color darkGreen = new Color(0,120,0);
+    private final static Color darkGreen = new Color(0,120,0);
 
-    private static Color highlightRed    = new Color(255,220,220);
-    private static Color highlightYellow = new Color(240,240,170);
-    private static Color highlightPurple = new Color(230,210,255);
-    private static Color highlightCyan   = new Color(190,255,255);
-    private static Color highlightOrange = new Color(255,200,130);
+    private final static Color highlightRed    = new Color(255,220,220);
+    private final static Color highlightYellow = new Color(240,240,170);
+    private final static Color highlightPurple = new Color(230,210,255);
+    private final static Color highlightCyan   = new Color(190,255,255);
+    private final static Color highlightOrange = new Color(255,200,130);
 
-    private static Color highlightGreen1  = new Color(210,250,210);
-    private static Color highlightGreen2  = new Color(175,250,175);
-    private static Color highlightGreen3  = new Color(150,250,150);
+    private final static Color highlightGreen1  = new Color(210,250,210);
+    private final static Color highlightGreen2  = new Color(175,250,175);
+    private final static Color highlightGreen3  = new Color(150,250,150);
 
-    private static Color highlightBlue1  = new Color(220,240,245);
-    private static Color highlightBlue2  = new Color(195,225,245);
-    private static Color highlightBlue3  = new Color(180,210,245);
+    private final static Color highlightBlue1  = new Color(220,240,245);
+    private final static Color highlightBlue2  = new Color(195,225,245);
+    private final static Color highlightBlue3  = new Color(180,210,245);
 
     //--------------------
     // Normal colors
@@ -160,8 +161,8 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
     /** Thread to handle search in background. */
     private SearchTask task;
 
-    private int evioVersion;
-    private long magicNumber = ((long)BlockHeader.MAGIC_INT) & 0xffffffffL;
+    private final int evioVersion;
+    private final long magicNumber = ((long)BlockHeader.MAGIC_INT) & 0xffffffffL;
 
 
     /**
@@ -462,7 +463,7 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
         // Set the color
         if (color != null) {
             if (isEvent) {
-                dataTableModel.highLightEventHeaderV6(color, lastSearchedRow, lastSearchedCol, false);
+                dataTableModel.highLightEventHeader(color, lastSearchedRow, lastSearchedCol, false);
             }
             else {
                 dataTableRenderer.setHighlightCell(color, lastSearchedRow, lastSearchedCol, false);
@@ -489,13 +490,13 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
      * @param findValue value of word to find
      * @param getBlock  return the 7 words prior to & also the found value (8 words total).
      *                  Used when finding block headers.
-     * @param comments  comments to add to found value's row
+     * @param comment   comment to add to found value's row
      * @param sTask      object used to update progress of search
      *
      * @return previous 7 ints of found value if getPrevData arg is {@code true}
      */
     private int[] scrollToAndHighlight(boolean down, long findValue, boolean getBlock,
-                                      String comments, SearchTask sTask) {
+                                      String comment, SearchTask sTask) {
         JViewport viewport = tablePane.getViewport();
 
         // The location of the viewport relative to the table
@@ -563,22 +564,24 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
                         startingCol = lastSearchedCol + 1;
                     }
                 }
-System.out.println("\nStart looking at row = " + row + ", col = " + startingCol);
+//System.out.println("\nStart looking at row = " + row + ", col = " + startingCol);
 
                 while (row < rowCount) {
-System.out.println("row down = " + row);
+//System.out.println("row down = " + row);
 
                     for (int col = startingCol; col < 6; col++) {
-System.out.println("col = " + col);
+//System.out.println("col = " + col);
                         // Stop search now
                         if (stopSearch) {
                             foundValue = false;
-System.out.println("continue, stopSearch set to TRUE!!!");
+//System.out.println("continue, stopSearch set to TRUE!!!");
                             break out;
                         }
 
                         // Check value of column containing file data at given row
+  //System.out.println("get long val at r/c = " + row + "/" + col);
                         val = dataTableModel.getLongValueAt(row, col);
+//System.out.println("val = " + val);
 
                         // Set row & col being searched right now
                         lastSearchedRow = row;
@@ -586,7 +589,7 @@ System.out.println("continue, stopSearch set to TRUE!!!");
 
                         // If we found a match in a table's element ...
                         if (val == findValue) {
-System.out.println("FOUND val = " + Long.toHexString(findValue) + "!!!, getBLock = " + getBlock);
+//System.out.println("FOUND val = " + Long.toHexString(findValue) + "!!!, getBLock = " + getBlock);
 
                             // If we're looking for a block header ...
                             if (getBlock) {
@@ -598,7 +601,7 @@ System.out.println("FOUND val = " + Long.toHexString(findValue) + "!!!, getBLock
                                 if (blockData == null) {
                                     // Error of some kind or found file header
                                     foundValue = false;
-System.out.println("continue, error in highlightBlockHeader");
+//System.out.println("continue, error in highlightBlockHeader");
                                     continue;
                                 }
 
@@ -609,7 +612,7 @@ System.out.println("continue, error in highlightBlockHeader");
                                 if ( ((blockData[5] & 0xf) < 2) || ((blockData[5] & 0xf) > 6) ) {
                                     // This is most likely NOT a header, so continue search
                                     foundValue = false;
-System.out.println("continue, error in block data");
+//System.out.println("continue, error in block data");
                                     continue;
                                 }
                             }
@@ -618,8 +621,8 @@ System.out.println("continue, error in block data");
                             }
 
                             // Mark it in comments
-                            if (comments != null) {
-                                dataTableModel.setValueAt(comments, row, 6);
+                            if (comment != null) {
+                                dataTableModel.setValueAt(comment, row, 6);
                             }
 
                             // Y position of row with found value
@@ -629,7 +632,7 @@ System.out.println("continue, error in block data");
 
                             // If found value's row is currently visible ...
                             if (rowY >= viewY && rowY <= viewY + viewHeight) {
-System.out.println("Do NOT change view");
+//System.out.println("Do NOT change view");
                                 dataTableModel.dataChanged();
                                 // Select cell of found value
                                 dataTable.setRowSelectionInterval(row,row);
@@ -657,9 +660,9 @@ System.out.println("Do NOT change view");
 
                     // Cut way back on the number of times we do this
                     if (row % 4194304 == 0) {
-System.out.println("set progress");
+//System.out.println("set progress");
                         sTask.setTaskProgress(dataTableModel.getRowProgress(row));
-System.out.println("Done setting progress");
+//System.out.println("Done setting progress");
                     }
                 }
             }
@@ -693,14 +696,14 @@ System.out.println("Done setting progress");
                         startingCol = lastSearchedCol - 1;
                     }
                 }
-System.out.println("\nStart looking at row = " + row + ", col = " + startingCol);
+//System.out.println("\nStart looking at row = " + row + ", col = " + startingCol);
 
                 while (row >= 0) {
-System.out.println("row up = " + row);
+//System.out.println("row up = " + row);
 
                     // In general, start with right-most col and go left
                     for (int col = startingCol; col > 0; col--) {
-System.out.println("col = " + col);
+//System.out.println("col = " + col);
                         // Stop search now
                         if (stopSearch) {
                             foundValue = false;
@@ -745,8 +748,8 @@ System.out.println("col = " + col);
 
 
                             // Mark it in comments
-                            if (comments != null) {
-                                dataTableModel.setValueAt(comments, row, 6);
+                            if (comment != null) {
+                                dataTableModel.setValueAt(comment, row, 6);
                             }
 
                             // Y position of row with found value
@@ -756,7 +759,7 @@ System.out.println("col = " + col);
 
                             // If found value's row is currently visible ...
                             if (rowY >= viewY && rowY <= viewY + viewHeight) {
-System.out.println("Do NOT change view");
+//System.out.println("Do NOT change view");
                                 dataTableModel.dataChanged();
                                 // Select cell of found value
                                 dataTable.setRowSelectionInterval(row,row);
@@ -765,7 +768,7 @@ System.out.println("Do NOT change view");
                             else {
                                 // Place found row 5 rows above view's bottom
                                 int numRowsViewed = viewHeight / dataTableRowHeight;
-System.out.println("rows viewed = " + numRowsViewed + ", final row = " + (row + numRowsViewed - 5));
+//System.out.println("rows viewed = " + numRowsViewed + ", final row = " + (row + numRowsViewed - 5));
                                 finalY = (row - numRowsViewed + 6)*dataTableRowHeight;
                                 rec = new Rectangle(viewPoint.x, finalY, viewWidth, viewHeight);
                                 // Selection will be made AFTER jump to view (at very end)
@@ -793,7 +796,7 @@ System.out.println("rows viewed = " + numRowsViewed + ", final row = " + (row + 
             // If we're here, we did NOT find any value
 
             if (down) {
-System.out.println("Did NOT find val, at bottom, stopSearch = " + stopSearch);
+//System.out.println("Did NOT find val, at bottom, stopSearch = " + stopSearch);
                 // See if there are more data (maps) to follow.
                 // If so, go to the next map and search there.
                 if (!dataTableModel.nextMap()) {
@@ -806,7 +809,7 @@ System.out.println("Did NOT find val, at bottom, stopSearch = " + stopSearch);
                 lastSearchedCol = 0;
             }
             else {
-System.out.println("Did NOT find val, at top");
+//System.out.println("Did NOT find val, at top");
                 // See if there are more data (maps) before.
                 // If so, go to the previous map and search there.
                 if (!dataTableModel.previousMap()) {
@@ -881,8 +884,7 @@ System.out.println("Did NOT find val, at top");
         @Override
         public int[] doInBackground() {
             enableControlsDuringSearch();
-            int[] blockData = scrollToAndHighlight(down, value, findBlock, label, this);
-            return blockData;
+            return scrollToAndHighlight(down, value, findBlock, label, this);
         }
 
         public void setTaskProgress(int p) {
@@ -906,7 +908,7 @@ System.out.println("Did NOT find val, at top");
             catch (InterruptedException ignore) {}
             catch (java.util.concurrent.ExecutionException e) {
                 System.err.println("Error searching file: " + e.getMessage());
-                Utilities.printStackTrace();
+                e.printStackTrace();
             }
 
             // If looking for a block, display its info
@@ -1134,7 +1136,7 @@ System.out.println("handleEventSearchForward: skip forward " + totalWords + " wo
         //-----------------------------------------------
 
         // Highlight selected event header len & next word
-        dataTableModel.highLightEventHeaderV6(highlightEvntHdr, row, col, false);
+        dataTableModel.highLightEventHeader(highlightEvntHdr, row, col, false);
 
         // Transform row & col into absolute index
         wordIndex = dataTableModel.getWordIndexOf(row,col);
@@ -1151,6 +1153,8 @@ System.out.println("handleEventSearchForward: skip forward " + totalWords + " wo
                 JOptionPane.QUESTION_MESSAGE, null, null, null);
 
             if (n != JOptionPane.OK_OPTION) {
+                // undo any highlight
+                dataTableModel.clearHighLightEventHeader(row, col);
                 return null;
             }
         }
@@ -1423,9 +1427,9 @@ System.out.println("handleEventSearchForward: Found a record header!! skip forwa
         // Length
         ((JLabel)(eventInfoPanel.getComponent(1))).setText("" + ((long)node.len & 0xffffffffL));
         // Tag
-        ((JLabel)(eventInfoPanel.getComponent(3))).setText("0x" + Integer.toHexString(node.tag));
+        ((JLabel)(eventInfoPanel.getComponent(3))).setText("0x" + Integer.toHexString(node.tag) + "   (" + node.tag + ")");
         // Num
-        ((JLabel)(eventInfoPanel.getComponent(5))).setText("" + node.num);
+        ((JLabel)(eventInfoPanel.getComponent(5))).setText("0x" + Integer.toHexString(node.num) + "   (" + node.num + ")");
         // Padding
         ((JLabel)(eventInfoPanel.getComponent(11))).setText("" + node.pad);
         // Bank type
@@ -2569,14 +2573,34 @@ System.out.println("handleEventSearchForward: Found a record header!! skip forwa
         dataTable = new JTable(dataTableModel);
         dataTableRenderer = new MyRenderer2(8);
         dataTableRenderer.setTableModel(dataTableModel);
-        dataTableRenderer.setHorizontalAlignment(JLabel.RIGHT);
+        dataTableRenderer.setHorizontalAlignment(SwingConstants.CENTER);
         dataTableModel.setTableRenderer(dataTableRenderer);
+
         dataTable.setDefaultRenderer(String.class, dataTableRenderer);
         dataTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         dataTable.setCellSelectionEnabled(true);
         dataTable.setSelectionBackground(Color.yellow);
         // Cannot allow re-ordering of data !!!
         dataTable.getTableHeader().setReorderingAllowed(false);
+
+        // Define class to get the text alignment of table header correct
+        class MyRender extends DefaultTableCellRenderer {
+            @Override
+            public Component getTableCellRendererComponent(JTable table,Object value,boolean isSelected,boolean hasFocus,int row,int column) {
+                super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+                if (column == 0) {
+                    setHorizontalAlignment(SwingConstants.RIGHT);
+                } else if (column == 6) {
+                    setHorizontalAlignment(SwingConstants.LEFT);
+                } else {
+                    setHorizontalAlignment(SwingConstants.CENTER);
+                }
+                return this;
+            }
+        }
+
+        MyRender tableHeaderRenderer = new MyRender();
+        dataTable.getTableHeader().setDefaultRenderer(tableHeaderRenderer);
 
         // Start searching from mouse-clicked cell
         dataTable.addMouseListener(
