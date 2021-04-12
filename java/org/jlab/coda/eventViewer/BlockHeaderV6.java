@@ -3,7 +3,11 @@ package org.jlab.coda.eventViewer;
 
 import org.jlab.coda.hipo.CompressionType;
 import org.jlab.coda.hipo.RecordHeader;
+import org.jlab.coda.jevio.EvioBank;
+import org.jlab.coda.jevio.Utilities;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.ArrayList;
 
 /**
@@ -12,7 +16,7 @@ import java.util.ArrayList;
  * @author timmer
  * (3/25/21)
  */
-public final class BlockHeaderV6 {
+public final class BlockHeaderV6 implements Cloneable {
 
     static int MAGIC_INT = 0xc0da0100;
 
@@ -55,6 +59,9 @@ public final class BlockHeaderV6 {
     /** User defined long register 2. */
     long register2;
     //------------------------------------------------------
+    /** Total bytes of header + index + user header. */
+    int totalBytes;
+    //------------------------------------------------------
 
     /** Contains description of any error in record's data. */
     String error;
@@ -65,6 +72,15 @@ public final class BlockHeaderV6 {
     /** If error somewhere in this record, store reference to each contained event. */
     final ArrayList<EvioHeader> events = new ArrayList<EvioHeader>();
 
+
+    public Object clone() {
+        try {
+            return super.clone();
+        }
+        catch (CloneNotSupportedException ex) {
+            return null;    // never invoked
+        }
+    }
 
     /**
      * Given the info word, set version, isLast, and hasDictionary values.
@@ -81,30 +97,119 @@ public final class BlockHeaderV6 {
     /**
      * Set members given an array containing the record header values.
      * @param recordInts array containing the record header values in proper order.
+     * @param order byte order of data in recordInts so longs can be parsed properly.
      */
-    void setData(int[] recordInts) {
+    void setData(int[] recordInts, ByteOrder order) {
         if (recordInts.length < 14) {
             System.out.println("BlockHeaderV6.setData: input array is too small");
             return;
         }
 
-        len           = recordInts[0];
-        place         = recordInts[1];
-        headerLen     = recordInts[2];
-        count         = recordInts[3];
+        len             = recordInts[0];
+        place           = recordInts[1];
+        headerLen       = recordInts[2];
+        count           = recordInts[3];
+        indexArrayBytes = recordInts[4];
 
         setInfoWord(recordInts[5]);
 
-        indexArrayBytes        = recordInts[4];
         userHeaderBytes        = recordInts[6];
         uncompressedDataBytes  = recordInts[8];
         compressionType        = recordInts[9] >>> 28;
         compressionTypeStr     = CompressionType.getCompressionType(compressionType).getDescription();
         compressedDataWords    = recordInts[9] & 0xffffff;
-// TODO: make sure both endians work ...
-        register1              = ((long)recordInts[10] << 32) | recordInts[11];
-        register2              = ((long)recordInts[12] << 32) | recordInts[13];
 
+        if (order == ByteOrder.BIG_ENDIAN) {
+            register1 = ((long) recordInts[10] << 32) | recordInts[11];
+            register2 = ((long) recordInts[12] << 32) | recordInts[13];
+        }
+        else {
+            register1 = ((long) recordInts[11] << 32) | recordInts[10];
+            register2 = ((long) recordInts[13] << 32) | recordInts[12];
+        }
+
+        totalBytes = 4*headerLen + indexArrayBytes + 4*Utilities.getWords(userHeaderBytes);
+    }
+
+    /**
+     * Set members given an array containing the record header values.
+     * @param recordInts array containing the record header values in proper order.
+     */
+    void setData(ByteBuffer recordInts) {
+        if (recordInts.remaining() < 4*14) {
+            System.out.println("BlockHeaderV6.setData: input ByteBuffer is too small");
+            return;
+        }
+
+        int pos = recordInts.position();
+
+        // Do absolute reads so we don't mess with the buffer's position
+
+        len             = recordInts.getInt(pos); pos+=4;
+        place           = recordInts.getInt(pos); pos+=4;
+        headerLen       = recordInts.getInt(pos); pos+=4;
+        count           = recordInts.getInt(pos); pos+=4;
+        indexArrayBytes = recordInts.getInt(pos); pos+=4;
+
+        setInfoWord(recordInts.getInt(pos)); pos+=4;
+
+        userHeaderBytes        = recordInts.getInt(pos); pos+=8;
+        uncompressedDataBytes  = recordInts.getInt(pos); pos+=4;
+        int compStuff          = recordInts.getInt(pos); pos+=4;
+        compressionType        = compStuff >>> 28;
+        compressionTypeStr     = CompressionType.getCompressionType(compressionType).getDescription();
+        compressedDataWords    = compStuff & 0xffffff;
+
+        register1 = recordInts.getLong(pos); pos += 8;
+        register1 = recordInts.getLong(pos);
+
+        totalBytes = 4*headerLen + indexArrayBytes + 4*Utilities.getWords(userHeaderBytes);
+    }
+
+
+    public String toString () {
+
+        StringBuilder sb = new StringBuilder(400);
+
+        sb.append("len = ");
+        sb.append(len);
+        sb.append("\nplace =");
+        sb.append(place);
+        sb.append("\nhdr len = ");
+        sb.append(headerLen);
+        sb.append("\nrec count = ");
+        sb.append(count);
+        sb.append("\nindex bytes = ");
+        sb.append(indexArrayBytes);
+
+        sb.append("\nversion = ");
+        sb.append(version);
+        sb.append("\nhas dict = ");
+        sb.append(hasDictionary);
+        sb.append("\nis last = ");
+        sb.append(isLast);
+        sb.append("\nversion = ");
+        sb.append(version);
+
+        sb.append("\nuser hdr bytes = ");
+        sb.append(userHeaderBytes);
+        sb.append("\nuncomp data bytes = ");
+        sb.append(uncompressedDataBytes);
+        sb.append("\ncompression type = ");
+        sb.append(uncompressedDataBytes);
+        sb.append("\ncomp data words = ");
+        sb.append(compressedDataWords);
+        sb.append("\nindex bytes = ");
+        sb.append(indexArrayBytes);
+
+        sb.append("\nregister 1 = ");
+        sb.append(register1);
+        sb.append("\nregister 2 = ");
+        sb.append(register2);
+        sb.append("\ntotalBytes = ");
+        sb.append(totalBytes);
+
+        return sb.toString();
     }
 }
 
