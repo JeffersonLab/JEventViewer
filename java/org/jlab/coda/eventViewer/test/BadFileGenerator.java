@@ -76,7 +76,7 @@ public class BadFileGenerator {
         0xc0da0100
     };
 
-    /** For writing out a 5GByte file. */
+    /** For writing out a file. */
     public static void main(String args[]) {
         // xml dictionary
         String dictionary =
