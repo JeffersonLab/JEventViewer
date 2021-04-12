@@ -54,7 +54,7 @@ public class SimpleMappedMemoryHandler {
     /** Get the evio version 6 file header object. */
     private FileHeader fileHeader;
 
-    /** The evio version 6 file header total bytes, header +_ index + user header. */
+    /** The evio version 6 file header total bytes, header + index + user header. */
     private int fileHeaderBytes;
 
     /** The index of the first data.
