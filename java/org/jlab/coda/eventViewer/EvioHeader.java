@@ -176,11 +176,10 @@ public final class EvioHeader implements Cloneable {
      * @param pos      evio structure's byte position in file
      * @param dataPos  evio structure's data position in file
      * @param dataLen  length of node data in 32-bit words
-     * @param dataType type of data contained in node
      * @param isEvent  is this structure an event (top-level bank)?
      */
     public void setAll (int word1, int word2, long pos, long dataPos,
-                        int dataLen, int dataType, boolean isEvent) {
+                        int dataLen, boolean isEvent) {
         len  = word1;
         tag  = word2 >> 16 & 0xffff;
         num  = word2 & 0xff;
@@ -193,7 +192,6 @@ public final class EvioHeader implements Cloneable {
         this.pos      = pos;
         this.dataPos  = dataPos;
         this.dataLen  = dataLen;
-        this.dataType = dataType;
         this.isEvent  = isEvent;
     }
 
