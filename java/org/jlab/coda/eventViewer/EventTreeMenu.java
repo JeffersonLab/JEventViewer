@@ -1804,8 +1804,6 @@ public class EventTreeMenu {
         }
         catch (EvioException e) {}
 
-        System.out.println("THE FILE IS EVIO VERSION " + evioVersion);
-
         if (evioVersion > 5) {
             new FileFrameV6(file, evioVersion);
         }
