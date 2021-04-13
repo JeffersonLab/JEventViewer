@@ -3,7 +3,6 @@ package org.jlab.coda.eventViewer;
 
 import org.jlab.coda.hipo.CompressionType;
 import org.jlab.coda.hipo.RecordHeader;
-import org.jlab.coda.jevio.EvioBank;
 import org.jlab.coda.jevio.Utilities;
 
 import java.nio.ByteBuffer;
