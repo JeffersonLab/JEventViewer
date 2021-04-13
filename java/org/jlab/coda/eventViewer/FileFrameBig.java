@@ -36,11 +36,12 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
     /** Widget allowing scrolling of table widget. */
     private JScrollPane tablePane;
 
-    /** Remember comments placed into 7th column of table. */
-    private HashMap<String,String> comments = new HashMap<String,String>();
+    /** Remember comments placed into 7th column of table.
+     *  The key is of the form map#:row# . */
+    private final HashMap<String,String> comments = new HashMap<String,String>();
 
     /** Store results of forward event searches to enable backwards ones. */
-    private TreeMap<Long,EvioHeader> eventMap = new TreeMap<Long,EvioHeader>();
+    private final TreeMap<Long,EvioHeader> eventMap = new TreeMap<Long,EvioHeader>();
 
     /** Look at file in big endian order by default. */
     private ByteOrder order = ByteOrder.BIG_ENDIAN;
@@ -59,7 +60,10 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
     /** Was the data scanned for errors? */
     private volatile boolean isScanned;
 
+    /** Widget allowing scrolling of controlPanel. */
+    private JScrollPane controlPane;
 
+    /** Control and info panel on left of "View File Bytes" window. */
     private JPanel controlPanel;
     private JPanel errorPanel;
     private final static int controlPanelWidth = 220;
@@ -256,6 +260,13 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         menuBar.add(menu);
         setJMenuBar(menuBar);
     }
+
+
+    /**
+     * Get the object that handles the memory maps.
+     * @return object that handles the memory maps.
+     */
+    public SimpleMappedMemoryHandler getMappedMemoryHandler() {return mappedMemoryHandler;}
 
 
     /**
@@ -824,7 +835,6 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
     }
 
 
-
     /** A SwingWorker thread to handle a possibly lengthy search for a value. */
     class SearchTask extends SwingWorker<int[], Void> {
 
@@ -992,7 +1002,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         setMessage(" ", null, null);
 
         int[] mapRowCol;
-        EvioHeader node = null;
+        EvioHeader node;
         long val, wordIndex;
 
         // Where are we now?
@@ -1331,9 +1341,9 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         // Length
         ((JLabel)(eventInfoPanel.getComponent(1))).setText("" + ((long)node.len & 0xffffffffL));
         // Tag
-        ((JLabel)(eventInfoPanel.getComponent(3))).setText("0x" + Integer.toHexString(node.tag));
+        ((JLabel)(eventInfoPanel.getComponent(3))).setText("0x" + Integer.toHexString(node.tag) + "   (" + node.tag + ")");
         // Num
-        ((JLabel)(eventInfoPanel.getComponent(5))).setText("" + node.num);
+        ((JLabel)(eventInfoPanel.getComponent(5))).setText("0x" + Integer.toHexString(node.num) + "   (" + node.num + ")");
         // Padding
         ((JLabel)(eventInfoPanel.getComponent(11))).setText("" + node.pad);
         // Bank type
@@ -1640,18 +1650,18 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         // of that block or event.
         MouseListener ml = new MouseListener() {
             public void mousePressed(MouseEvent e)  {}
-            public void mouseReleased(MouseEvent e) {}
             public void mouseEntered(MouseEvent e)  {}
             public void mouseExited(MouseEvent e)   {}
+            public void mouseClicked(MouseEvent e) {}
 
-            public void mouseClicked(MouseEvent e) {
+            public void mouseReleased(MouseEvent e) {
                 // Parse the action command
                 ButtonModel sel = faultRadioGroup.getSelection();
                 if (sel == null) return;
                 String actionCmd = sel.getActionCommand();
                 String[] strings = actionCmd.split(":");
                 int index = Integer.parseInt(strings[1]);
-                boolean isBlock = strings[0].equals("B");
+                //boolean isBlock = strings[0].equals("B");
 
                 currentBlockHeader = evioFaultScanner.getBlockErrorNodes().get(index);
                 // Want forward button to be 0 when index incremented
@@ -1690,12 +1700,12 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         class PanelRenderer implements ListCellRenderer {
             public Component getListCellRendererComponent(JList list, Object value, int index,
                                                           boolean isSelected, boolean cellHasFocus) {
-                JRadioButton renderer = (JRadioButton) value;
-                renderer.setSelected(isSelected);
-                if (isSelected) {
-                    renderer.doClick();
+                JRadioButton button = (JRadioButton) value;
+                button.setSelected(isSelected);
+                if (isSelected && cellHasFocus) {
+                    button.doClick();
                 }
-                return renderer;
+                return button;
             }
         }
 
@@ -1720,7 +1730,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
     private void scanBlockErrorEventsBack() {
         // Get BlockHeader set in mouseClick routine above
-        if (currentBlockHeader == null) return;
+        if (currentBlockHeader == null || currentBlockHeader.events.isEmpty()) return;
         if (--currentBlockHeader.currentEventIndex < 0)  currentBlockHeader.currentEventIndex = 0;
         EvioHeader header = currentBlockHeader.events.get(currentBlockHeader.currentEventIndex);
 
@@ -1833,15 +1843,17 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
     /** Add a panel controlling viewed data to this frame. */
     private void addControlPanel() {
         JPanel containControlPanel = new JPanel(new BorderLayout());
+        containControlPanel.setBorder(new EmptyBorder(5,10,5,10));
 
         // Put browsing buttons into panel
         controlPanel = new JPanel();
         BoxLayout boxLayout = new BoxLayout(controlPanel, BoxLayout.Y_AXIS);
         controlPanel.setLayout(boxLayout);
+        controlPanel.setBorder(new EmptyBorder(5,5,5,5));
+
         Border border = new CompoundBorder(
                 BorderFactory.createEtchedBorder(EtchedBorder.LOWERED),
                 new EmptyBorder(5,5,5,5));
-        controlPanel.setBorder(border);
 
         //-------------------------------
         // Put radio boxes in this panel
@@ -2240,7 +2252,12 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         this.add(msgPanel, BorderLayout.NORTH);
 
         containControlPanel.add(controlPanel, BorderLayout.NORTH);
-        this.add(containControlPanel, BorderLayout.WEST);
+
+        // Put control panel into scrolling pane
+        controlPane = new JScrollPane(containControlPanel);
+        controlPane.setHorizontalScrollBar(null);
+
+        this.add(controlPane, BorderLayout.WEST);
     }
 
 
@@ -2253,7 +2270,7 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         try {
             mappedMemoryHandler = new SimpleMappedMemoryHandler(file, order);
         }
-        catch (IOException e) {/* should not happen */}
+        catch (IOException e) {/* should not happen */ return;}
 
         // Get the file endian right
         ByteOrder actualOrder = mappedMemoryHandler.getOrder();
@@ -2272,9 +2289,9 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         dataTable = new JTable(dataTableModel);
         dataTableRenderer = new MyRenderer2(8);
         dataTableRenderer.setTableModel(dataTableModel);
+        dataTableRenderer.setHorizontalAlignment(SwingConstants.CENTER);
         dataTableModel.setTableRenderer(dataTableRenderer);
 
-        dataTableRenderer.setHorizontalAlignment(JLabel.RIGHT);
         dataTable.setDefaultRenderer(String.class, dataTableRenderer);
         dataTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         dataTable.setCellSelectionEnabled(true);
