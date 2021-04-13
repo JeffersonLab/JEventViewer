@@ -62,7 +62,10 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
     /** Was the data scanned for errors? */
     private volatile boolean isScanned;
 
+    /** Widget allowing scrolling of controlPanel. */
+    private JScrollPane controlPane;
 
+    /** Control and info panel on left of "View File Bytes" window. */
     private JPanel controlPanel;
     private JPanel errorPanel;
     private final static int controlPanelWidth = 220;
@@ -77,12 +80,12 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
     private final static Color highlightOrange = new Color(255,200,130);
 
     private final static Color highlightGreen1  = new Color(210,250,210);
-    private final static Color highlightGreen2  = new Color(175,250,175);
-    private final static Color highlightGreen3  = new Color(150,250,150);
+    private final static Color highlightGreen2  = new Color(165,250,165);
+    private final static Color highlightGreen3  = new Color(130,225,130);
 
     private final static Color highlightBlue1  = new Color(220,240,245);
-    private final static Color highlightBlue2  = new Color(195,225,245);
-    private final static Color highlightBlue3  = new Color(180,210,245);
+    private final static Color highlightBlue2  = new Color(190,220,245);
+    private final static Color highlightBlue3  = new Color(160,190,245);
 
     //--------------------
     // Normal colors
@@ -283,6 +286,13 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
 
 
     /**
+     * Get the object that handles the memory maps.
+     * @return object that handles the memory maps.
+     */
+    public SimpleMappedMemoryHandler getMappedMemoryHandler() {return mappedMemoryHandler;}
+
+
+    /**
      * Get the endianness of viewed data.
      * @return endianness of viewed data.
      */
@@ -432,7 +442,7 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
      * Jump up or down to the specified word position in file.
      * It moves so that a full row is exactly at the top.
      * @param position index of data word to view
-     * @param color    highlight color is any
+     * @param color    highlight color if any
      * @param isEvent  are we highlighting an event (and therefore 2 words)?
      */
     private void scrollToIndex(long position, Color color, boolean isEvent) {
@@ -579,7 +589,7 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
                         }
 
                         // Check value of column containing file data at given row
-  //System.out.println("get long val at r/c = " + row + "/" + col);
+//System.out.println("get long val at r/c = " + row + "/" + col);
                         val = dataTableModel.getLongValueAt(row, col);
 //System.out.println("val = " + val);
 
@@ -660,9 +670,7 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
 
                     // Cut way back on the number of times we do this
                     if (row % 4194304 == 0) {
-//System.out.println("set progress");
                         sTask.setTaskProgress(dataTableModel.getRowProgress(row));
-//System.out.println("Done setting progress");
                     }
                 }
             }
@@ -718,6 +726,7 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
 
                         // If we found a match in a table's element ...
                         if (val == findValue)  {
+//System.out.println("FOUND val = " + Long.toHexString(findValue) + "!!!, getBLock = " + getBlock);
 
                             // If we're looking for a block header ...
                             if (getBlock) {
@@ -739,6 +748,7 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
                                 if ( ((blockData[5] & 0xf) < 2) || ((blockData[5] & 0xf) > 6) ) {
                                     // This is most likely NOT a header, so continue search
                                     foundValue = false;
+// System.out.println("continue, error in block data");
                                     continue;
                                 }
                             }
@@ -908,7 +918,6 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
             catch (InterruptedException ignore) {}
             catch (java.util.concurrent.ExecutionException e) {
                 System.err.println("Error searching file: " + e.getMessage());
-                e.printStackTrace();
             }
 
             // If looking for a block, display its info
@@ -1205,7 +1214,7 @@ System.out.println("handleEventSearchForward: skip forward " + totalWords + " wo
             long userHdrWords = Utilities.getWords((int)dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2]));
 
             long totalWords = headerWords + arrayWords + userHdrWords;
-System.out.println("handleEventSearchForward: Found a record header!! skip forward " + totalWords + " words");
+//System.out.println("handleEventSearchForward: Found a record header!! skip forward " + totalWords + " words");
             wordIndex += totalWords;
         }
         //---------------------------------------------------------------
@@ -1547,9 +1556,9 @@ System.out.println("handleEventSearchForward: Found a record header!! skip forwa
      * @param blockData array containing block header info.
      */
     private void updateBlockInfoPanel(int[] blockData) {
-        if (blockData == null || blockInfoPanel == null || blockData.length < 14) return;
+        if (blockData == null || blockInfoPanel == null || blockData.length < RecordHeader.HEADER_SIZE_WORDS) return;
         BlockHeaderV6 bh = new BlockHeaderV6();
-        bh.setData(blockData);
+        bh.setData(blockData, mappedMemoryHandler.getOrder());
         updateBlockInfoPanel(bh);
     }
 
@@ -1574,8 +1583,8 @@ System.out.println("handleEventSearchForward: Found a record header!! skip forwa
         ((JLabel)(blockInfoPanel.getComponent(19))).setText("" + header.uncompressedDataBytes);
         ((JLabel)(blockInfoPanel.getComponent(21))).setText(     header.compressionTypeStr);
         ((JLabel)(blockInfoPanel.getComponent(23))).setText("" + header.compressedDataWords);
-        ((JLabel)(blockInfoPanel.getComponent(25))).setText("" + header.register1);
-        ((JLabel)(blockInfoPanel.getComponent(27))).setText("" + header.register2);
+        ((JLabel)(blockInfoPanel.getComponent(25))).setText("0x" + Long.toHexString(header.register1));
+        ((JLabel)(blockInfoPanel.getComponent(27))).setText("0x" + Long.toHexString(header.register2));
     }
 
 
@@ -1806,14 +1815,10 @@ System.out.println("handleEventSearchForward: Found a record header!! skip forwa
         // If no scan for faults has been done, do it now
         if (evioFaultScanner == null) {
             try {
-//                evioFaultScanner = new EvioScannerV6(this,
-//                                                   dataTableModel,
-//                                                   dataTableRenderer,
-//                                                   errorTask);
-                evioFaultScanner = new EvioScannerV6(null,
-                                                   null,
-                                                   null,
-                                                   null);
+                evioFaultScanner = new EvioScannerV6(this,
+                                                   dataTableModel,
+                                                   dataTableRenderer,
+                                                   errorTask);
             }
             catch (EvioException e) {
                 JOptionPane.showMessageDialog(this, e.getMessage(), "Return",
@@ -1862,18 +1867,19 @@ System.out.println("handleEventSearchForward: Found a record header!! skip forwa
         // of that block or event.
         MouseListener ml = new MouseListener() {
             public void mousePressed(MouseEvent e)  {}
-            public void mouseReleased(MouseEvent e) {}
             public void mouseEntered(MouseEvent e)  {}
             public void mouseExited(MouseEvent e)   {}
+            public void mouseClicked(MouseEvent e) {}
 
-            public void mouseClicked(MouseEvent e) {
+            public void mouseReleased(MouseEvent e) {
                 // Parse the action command
                 ButtonModel sel = faultRadioGroup.getSelection();
                 if (sel == null) return;
                 String actionCmd = sel.getActionCommand();
                 String[] strings = actionCmd.split(":");
                 int index = Integer.parseInt(strings[1]);
-                boolean isBlock = strings[0].equals("B");
+                //boolean isBlock = strings[0].equals("B");
+//System.out.println("CLICK " + index);
 
                 currentBlockHeader = evioFaultScanner.getBlockErrorNodes().get(index);
                 // Want forward button to be 0 when index incremented
@@ -1912,12 +1918,13 @@ System.out.println("handleEventSearchForward: Found a record header!! skip forwa
         class PanelRenderer implements ListCellRenderer {
             public Component getListCellRendererComponent(JList list, Object value, int index,
                                                           boolean isSelected, boolean cellHasFocus) {
-                JRadioButton renderer = (JRadioButton) value;
-                renderer.setSelected(isSelected);
-                if (isSelected) {
-                    renderer.doClick();
+                JRadioButton button = (JRadioButton) value;
+                button.setSelected(isSelected);
+                if (isSelected && cellHasFocus) {
+//System.out.println("Cell DO CLICK " + button.getActionCommand());
+                    button.doClick();
                 }
-                return renderer;
+                return button;
             }
         }
 
@@ -1942,7 +1949,7 @@ System.out.println("handleEventSearchForward: Found a record header!! skip forwa
 
     private void scanBlockErrorEventsBack() {
         // Get BlockHeader set in mouseClick routine above
-        if (currentBlockHeader == null) return;
+        if (currentBlockHeader == null || currentBlockHeader.events.isEmpty()) return;
         if (--currentBlockHeader.currentEventIndex < 0)  currentBlockHeader.currentEventIndex = 0;
         EvioHeader header = currentBlockHeader.events.get(currentBlockHeader.currentEventIndex);
 
@@ -2033,6 +2040,13 @@ System.out.println("handleEventSearchForward: Found a record header!! skip forwa
                 TitledBorder.CENTER,
                 TitledBorder.TOP, null, Color.blue);
 
+        // Border for Error panel
+        Border compoundError = BorderFactory.createCompoundBorder(lineBorder, null);
+        compoundError = BorderFactory.createTitledBorder(
+                compoundFile, "Errors",
+                TitledBorder.CENTER,
+                TitledBorder.TOP, null, Color.blue);
+
 
         JPanel keyInfoPanel = new JPanel();
         //keyInfoPanel.setLayout(new GridLayout(8,1,5,2));
@@ -2089,10 +2103,16 @@ System.out.println("handleEventSearchForward: Found a record header!! skip forwa
         keyRecordHeader.add(labels[4]);
         keyRecordHeader.add(labels[5]);
 
+        JPanel keyErrorHeader = new JPanel();
+        keyErrorHeader.setLayout(new GridLayout(3,1,5,2));
+        keyErrorHeader.setBorder(compoundError);
+        keyErrorHeader.add(labels[9]);
+        keyErrorHeader.add(labels[10]);
+        keyErrorHeader.add(labels[11]);
 
         JPanel theRest = new JPanel();
         theRest.setLayout(new GridLayout(6,1,5,6));
-        for (int i=6; i < 12; i++) {
+        for (int i=6; i < 9; i++) {
             theRest.add(labels[i]);
         }
 
@@ -2106,6 +2126,8 @@ System.out.println("handleEventSearchForward: Found a record header!! skip forwa
         keyInfoPanel.add(Box.createRigidArea(new Dimension(0,15)));
         keyInfoPanel.add(keyRecordHeader);
         keyInfoPanel.add(Box.createRigidArea(new Dimension(0,15)));
+        keyInfoPanel.add(keyErrorHeader);
+        keyInfoPanel.add(Box.createRigidArea(new Dimension(0,15)));
         keyInfoPanel.add(theRest);
 
         // Add to control panel
@@ -2118,15 +2140,17 @@ System.out.println("handleEventSearchForward: Found a record header!! skip forwa
     /** Add a panel controlling viewed data to this frame. */
     private void addControlPanel() {
         JPanel containControlPanel = new JPanel(new BorderLayout());
+        containControlPanel.setBorder(new EmptyBorder(5,10,5,10));
 
         // Put browsing buttons into panel
         controlPanel = new JPanel();
         BoxLayout boxLayout = new BoxLayout(controlPanel, BoxLayout.Y_AXIS);
         controlPanel.setLayout(boxLayout);
+        controlPanel.setBorder(new EmptyBorder(5,5,5,5));
+
         Border border = new CompoundBorder(
                 BorderFactory.createEtchedBorder(EtchedBorder.LOWERED),
                 new EmptyBorder(5,5,5,5));
-        controlPanel.setBorder(border);
 
         //-------------------------------
         // Put file header data in this pannel
@@ -2457,7 +2481,7 @@ System.out.println("handleEventSearchForward: Found a record header!! skip forwa
 
                 switch (cmd) {
                     case 3:
-                        // Page Scrolling
+                        // Page Scrolling, >>
                         setMessage(" ", null, null);
                         scrollToVisible(true, 40);
                         setSliderPosition();
@@ -2479,7 +2503,7 @@ System.out.println("handleEventSearchForward: Found a record header!! skip forwa
 
                 switch (cmd) {
                     case 3:
-                        // Page Scrolling
+                        // Page Scrolling, <<
                         setMessage(" ", null, null);
                         scrollToVisible(false, 40);
                         setSliderPosition();
@@ -2532,7 +2556,12 @@ System.out.println("handleEventSearchForward: Found a record header!! skip forwa
         this.add(msgPanel, BorderLayout.NORTH);
 
         containControlPanel.add(controlPanel, BorderLayout.NORTH);
-        this.add(containControlPanel, BorderLayout.WEST);
+
+        // Put control panel into scrolling pane
+        controlPane = new JScrollPane(containControlPanel);
+        controlPane.setHorizontalScrollBar(null);
+
+        this.add(controlPane, BorderLayout.WEST);
     }
 
 
@@ -2546,7 +2575,6 @@ System.out.println("handleEventSearchForward: Found a record header!! skip forwa
             mappedMemoryHandler = new SimpleMappedMemoryHandler(file, order);
         }
         catch (IOException e) {
-            e.printStackTrace();
             return;
         }
 
