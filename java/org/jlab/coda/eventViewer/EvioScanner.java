@@ -744,7 +744,7 @@ if (debug) System.out.println("Error 4: " + node.error);
                 }
 
                 // Add it in case there's an error in this block and we need it later
-                blockNode.events.add(node);
+                //blockNode.events.add(node);
 
                 // Hop over header + data to next event or block
                 byteLen = 4L*((dataModel.getInt(bufPosInBlock) & 0xffffffffL) + 1L);
@@ -755,7 +755,7 @@ if (debug) System.out.println("Error 4: " + node.error);
             }
 
             if (foundErrorInBlock) {
-                dataModel.highLightBlockHeader(parentComponent.highlightBlkHdrErr, blockNode.filePos, true);
+                 dataModel.highLightBlockHeader(parentComponent.highlightBlkHdrErr, blockNode.filePos, true);
             }
             else {
                 // If the length of events taken from the block header is not the same
