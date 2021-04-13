@@ -489,7 +489,7 @@ if (debug) System.out.println("Error 4: " + node.error);
      */
     public boolean scanFileForErrors() throws EvioException {
 
-        int  byteInfo, magicNum, totalHeaderBytes, indexBytes, userHeaderBytes;
+        int  bitInfo, magicNum, totalHeaderBytes, indexBytes, userHeaderBytes;
         int  uncompressedDataBytes, compressionType, compressedDataWords;
         long blockEventLengthsSum, blockDataBytes, blockWordSize, byteLen;
         int  blockNum, blockHdrWordSize, blockEventCount;
@@ -537,7 +537,7 @@ if (debug) System.out.println("Error 4: " + node.error);
             // is properly converted to long without sign extension.
             blockWordSize         = dataModel.getInt(bufPos) & 0xffffffffL;
             blockNum              = dataModel.getInt(bufPos + RecordHeader.RECORD_NUMBER_OFFSET);
-            byteInfo              = dataModel.getInt(bufPos + RecordHeader.BIT_INFO_OFFSET);
+            bitInfo               = dataModel.getInt(bufPos + RecordHeader.BIT_INFO_OFFSET);
             blockHdrWordSize      = dataModel.getInt(bufPos + RecordHeader.HEADER_LENGTH_OFFSET);
             blockEventCount       = dataModel.getInt(bufPos + RecordHeader.EVENT_COUNT_OFFSET);
             magicNum              = dataModel.getInt(bufPos + RecordHeader.MAGIC_OFFSET);
@@ -548,6 +548,8 @@ if (debug) System.out.println("Error 4: " + node.error);
             compressedDataWords   = compWord & 0xffffff;
             userHeaderBytes       = dataModel.getInt(bufPos + RecordHeader.USER_LENGTH_OFFSET); // No padding
             totalHeaderBytes      = 4*blockHdrWordSize + indexBytes + 4*Utilities.getWords(userHeaderBytes);
+
+            boolean isTrailer = RecordHeader.isEvioTrailer(bitInfo);
 //System.out.println("errorScan: magic # = 0x" + Integer.toHexString(magicNum));
 
             // Store block header info in object
@@ -563,7 +565,7 @@ if (debug) System.out.println("Error 4: " + node.error);
             blockNode.compressedDataWords = compressedDataWords;
             blockNode.uncompressedDataBytes = uncompressedDataBytes;
             blockNode.totalBytes = totalHeaderBytes; // Acct for padding
-            blockNode.setInfoWord(byteInfo);
+            blockNode.setInfoWord(bitInfo);
 //System.out.println("errorScan: block node = \n" + blockNode);
 
             // Init variables
@@ -625,6 +627,24 @@ if (debug) System.out.println("Error 4: " + node.error);
                     foundError = true;
                     foundErrorInBlock = true;
                 }
+            }
+
+            // Number of events conflicts with index length (test not valid for trailer)
+            if (!isTrailer && (4*blockEventCount != indexBytes)) {
+                if (blockNode.error != null) {
+                    blockNode.error += ";   Index bytes (" + indexBytes + ") != 4*event-count (" +
+                            (4*blockEventCount) + ")";
+                }
+                else {
+                    blockNode.error = "Block: Index bytes (" + indexBytes + ") != 4*event-count (" +
+                            (4*blockEventCount) + ")";
+                    blockErrorNodes.add(blockNode);
+                }
+
+                if(debug) System.out.println("scanFile: Index bytes (" + indexBytes + ") != 4*event-count (" +
+                        (4*blockEventCount)  + ")");
+                foundError = true;
+                foundErrorInBlock = true;
             }
 
             // Block header length not = 14
