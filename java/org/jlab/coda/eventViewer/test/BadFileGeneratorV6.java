@@ -184,7 +184,7 @@ public class BadFileGeneratorV6 {
             0x0000001F,   // 31 words
             0x00000001,   // rec #
             0x0000000e,   // header word len (14)
-            0x00000002,   // 2 events
+            0x00000003,   // 2 events (set to 3)
             0x00000008,   // index array bytes
             0x00000006,   // bitinfo & version
             0x0000000c,   // user header bytes (= 12 bytes = 3 ints)
@@ -207,16 +207,16 @@ public class BadFileGeneratorV6 {
 
             // ev 1
             0x00000006,
-            0x00018e01,   // tag=1, bank, num=1 (should be 0x18001), pad = 1, should be 0
+            0x00018e01,   // tag=1, bank, num=1 (should be 0x10e01), not 0x18e01 (pad = 2)
             0x00000004,
-            0x00028102,   // tag=2, unsigned int, num=2, type = UINT32 (1), pad = 2 (should be 0x00020102)
+            0x00028102,   // tag=2, unsigned int, num=2, type = UINT32 (1),  (should be 0x00020102) not 0x28102 (pad = 2)
             0x00000001,
             0x00000001,
             0x00000001,
 
             // ev 2
             0x00000004,
-            0x0003C103,   // tag=3, unsigned int, num=3
+            0x00030103,   // tag=3, unsigned int, num=3 should be 0x30103 not 0x3C103 (pad = 3)
             0x00000002,
             0x00000002,
             0x00000002,
