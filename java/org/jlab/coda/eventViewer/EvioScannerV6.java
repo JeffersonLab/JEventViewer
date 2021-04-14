@@ -492,8 +492,8 @@ if (debug) System.out.println("Error 4: " + node.error);
         int  bitInfo, magicNum, totalHeaderBytes, indexBytes, userHeaderBytes;
         int  uncompressedDataBytes, compressionType, compressedDataWords;
         long blockEventLengthsSum, blockDataBytes, blockWordSize, byteLen;
-        int  blockNum, blockHdrWordSize, blockEventCount;
-        boolean  foundErrorInEvent, foundError=false, foundErrorInBlock, debug=false;
+        int  blockNum, blockHdrWordSize, blockEventCount, dataBytes;
+        boolean  foundError=false, foundErrorInBlock, debug=false;
         BlockHeaderV6 blockNode;
         EvioHeader node;
 
@@ -548,6 +548,7 @@ if (debug) System.out.println("Error 4: " + node.error);
             compressedDataWords   = compWord & 0xffffff;
             userHeaderBytes       = dataModel.getInt(bufPos + RecordHeader.USER_LENGTH_OFFSET); // No padding
             totalHeaderBytes      = 4*blockHdrWordSize + indexBytes + 4*Utilities.getWords(userHeaderBytes);
+            dataBytes             = (int)(4*blockWordSize) - totalHeaderBytes;
 
             boolean isTrailer = RecordHeader.isEvioTrailer(bitInfo);
 //System.out.println("errorScan: magic # = 0x" + Integer.toHexString(magicNum));
@@ -569,7 +570,7 @@ if (debug) System.out.println("Error 4: " + node.error);
 //System.out.println("errorScan: block node = \n" + blockNode);
 
             // Init variables
-            foundErrorInBlock = foundErrorInEvent = false;
+            foundErrorInBlock = false;
             blockEventLengthsSum = 0L;
             blockDataBytes = 4L*blockWordSize - totalHeaderBytes;
 
@@ -585,21 +586,18 @@ if (debug) System.out.println("Error 4: " + node.error);
                     throw new EvioException("Switch endianness & try again");
                 }
 
-                blockNode.error = "Block header, magic # incorrect";
+                blockNode.error = "Record header, magic # incorrect";
                 blockErrorNodes.add(blockNode);
                 if(debug) System.out.println("scanFile: fatal error = " + blockNode.error);
                 dataModel.highLightBlockHeader(parentComponent.highlightBlkHdrErr, bufPos, true);
                 return true;
             }
 
-            if(debug) System.out.println("scanFile: blockWordSize = " + blockWordSize +
-                    ", totalHdrBYtes -> words = " + (totalHeaderBytes/4));
+            // Block and/or header length is too small
+            if (blockWordSize < totalHeaderBytes/4 ||
+                blockHdrWordSize < RecordHeader.HEADER_SIZE_WORDS) {
 
-            // Block lengths are wrong or too small
-            if (    blockWordSize < totalHeaderBytes/4 ||
-                    blockHdrWordSize < RecordHeader.HEADER_SIZE_WORDS ||
-                    blockNum < 0 || blockEventCount < 0) {
-                blockNode.error = "Block: len, header len, event cnt or block # is out of range";
+                blockNode.error = "Record: len and/or header len is out of range";
                 blockErrorNodes.add(blockNode);
                 if(debug) System.out.println("scanFile: fatal error = " + blockNode.error);
                 dataModel.highLightBlockHeader(parentComponent.highlightBlkHdrErr, bufPos, true);
@@ -607,10 +605,10 @@ if (debug) System.out.println("Error 4: " + node.error);
             }
 
             if (compressionType == 0) {
-                if (compressedDataWords != 0 || (uncompressedDataBytes != 4*blockWordSize - totalHeaderBytes)) {
+                if (compressedDataWords != 0 || (uncompressedDataBytes != dataBytes)) {
                     // If not compressing, lengths are wrong but we can continue scanning
                     // since these specific lengths are not used for scanning file.
-                    blockNode.error = "Block: no compression, but comp len != 0 or uncomp len wrong";
+                    blockNode.error = "Record: no compression, but comp len != 0 or uncomp len wrong";
                     blockErrorNodes.add(blockNode);
                     if (debug) System.out.println("scanFile: error = " + blockNode.error);
                     foundError = true;
@@ -618,10 +616,10 @@ if (debug) System.out.println("Error 4: " + node.error);
                 }
             }
             else {
-                if ((compressedDataWords != blockWordSize - totalHeaderBytes/4) || uncompressedDataBytes != 0) {
+                if ((compressedDataWords != dataBytes/4) || uncompressedDataBytes != 0) {
                     // If compressing, lengths are wrong but we can continue scanning
                     // since these specific lengths are not used for scanning file.
-                    blockNode.error = "Block: compressing data, but comp len wrong or uncomp len != 0";
+                    blockNode.error = "Record: compressing data, but comp len wrong or uncomp len != 0";
                     blockErrorNodes.add(blockNode);
                     if (debug) System.out.println("scanFile: error = " + blockNode.error);
                     foundError = true;
@@ -636,7 +634,7 @@ if (debug) System.out.println("Error 4: " + node.error);
                             (4*blockEventCount) + ")";
                 }
                 else {
-                    blockNode.error = "Block: Index bytes (" + indexBytes + ") != 4*event-count (" +
+                    blockNode.error = "Record: Index bytes (" + indexBytes + ") != 4*event-count (" +
                             (4*blockEventCount) + ")";
                     blockErrorNodes.add(blockNode);
                 }
@@ -647,9 +645,17 @@ if (debug) System.out.println("Error 4: " + node.error);
                 foundErrorInBlock = true;
             }
 
+            // Event cnt or block # may be too large
+            if (blockNum < 0 || blockEventCount < 0) {
+                long blkNum   = blockNum &  0xffffffffL;
+                long blkEvCnt = blockEventCount &  0xffffffffL;
+                if(debug) System.out.println("Warning, suspicious record number (" + blkNum +
+                                             ") and/or event count (" + blkEvCnt + ")");
+            }
+
             // Block header length not = 14
             if (blockHdrWordSize != RecordHeader.HEADER_SIZE_WORDS) {
-                if(debug) System.out.println("Warning, suspicious block header size, " + blockHdrWordSize);
+                if(debug) System.out.println("Warning, suspicious record header size, " + blockHdrWordSize);
             }
 
             // Hop over block header (and index and user header) to events
@@ -670,7 +676,7 @@ if (debug) System.out.println("Error 4: " + node.error);
                             blockNode.error += ";   Not enough data (bad bank len?)";
                         }
                         else {
-                            blockNode.error = "Block: not enough data (bad bank len?)";
+                            blockNode.error = "Record: not enough data (bad bank len?)";
                             blockErrorNodes.add(blockNode);
                         }
                         // We're done with this block
@@ -687,14 +693,14 @@ if (debug) System.out.println("Error 4: " + node.error);
                             blockNode.error += ";   Event count = " + blockEventCount + ", but should = " + i;
                         }
                         else {
-                            blockNode.error = "Block: event count = " + blockEventCount + ", but should = " + i;
+                            blockNode.error = "Record: event count = " + blockEventCount + ", but should = " + i;
                             blockErrorNodes.add(blockNode);
                         }
                         // We're done with this block
                         foundError = true;
                         foundErrorInBlock = true;
                         if (debug)
-                            System.out.println("scanFile: block event count is " + blockEventCount + " but should be " + i);
+                            System.out.println("scanFile: record event count is " + blockEventCount + " but should be " + i);
                         break;
                     }
 
@@ -705,11 +711,11 @@ if (debug) System.out.println("Error 4: " + node.error);
                     if (word == BlockHeaderV6.MAGIC_INT) {
                         // We've gone too far - to beginning of next block
                         if (blockNode.error != null) {
-                            blockNode.error += ";   Block len too large & event count = " +
+                            blockNode.error += ";   Record len too large & event count = " +
                                     blockEventCount + " but should = " + i;
                         }
                         else {
-                            blockNode.error = "Block: len too large & event count = " +
+                            blockNode.error = "Record: len too large & event count = " +
                                                blockEventCount + " but should = " + i;
                             blockErrorNodes.add(blockNode);
                         }
@@ -793,12 +799,12 @@ if (debug) System.out.println("Error 4: " + node.error);
                 // as the length of all the events in the block added up, there's a problem.
                 if ((compressionType == 0) && (blockEventLengthsSum != blockDataBytes)) {
                     if (blockNode.error != null) {
-                        blockNode.error += ";   Len of events in block (" + blockEventLengthsSum +
-                                ") does NOT match block header (" + blockDataBytes + ")";
+                        blockNode.error += ";   Len of events in record (" + blockEventLengthsSum +
+                                ") does NOT match record header (" + blockDataBytes + ")";
                     }
                     else {
-                        blockNode.error = "Len of events in block (" + blockEventLengthsSum +
-                                ") does NOT match block header (" + blockDataBytes + ")";
+                        blockNode.error = "Len of events in record (" + blockEventLengthsSum +
+                                ") does NOT match record header (" + blockDataBytes + ")";
                         blockErrorNodes.add(blockNode);
                     }
 
@@ -839,11 +845,11 @@ if (debug) System.out.println("Error 4: " + node.error);
                 blockNode.error += ";   Len too large (not enough data)";
             }
             else {
-                blockNode.error = "Block: len too large (not enough data)";
+                blockNode.error = "Record: len too large (not enough data)";
                 blockErrorNodes.add(blockNode);
             }
 
-            if(debug) System.out.println("scanFile: not enough data for block len");
+            if(debug) System.out.println("scanFile: not enough data for record len");
             dataModel.highLightBlockHeader(parentComponent.highlightBlkHdrErr, blockNode.filePos, true);
             return true;
         }
