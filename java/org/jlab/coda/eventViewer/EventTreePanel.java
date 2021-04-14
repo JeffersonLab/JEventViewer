@@ -6,10 +6,10 @@ import javax.swing.*;
 import javax.swing.border.TitledBorder;
 import javax.swing.event.TreeSelectionEvent;
 import javax.swing.event.TreeSelectionListener;
-import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.text.*;
-import javax.swing.tree.*;
+import javax.swing.tree.TreePath;
+import javax.swing.tree.TreeSelectionModel;
 import java.awt.*;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
@@ -31,7 +31,6 @@ import java.util.LinkedList;
  * @author Heddle
  * @author Timmer
  */
-@SuppressWarnings("serial")
 public class EventTreePanel extends JPanel implements TreeSelectionListener {
 
     /** Panel for displaying header information. */
@@ -270,185 +269,13 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
     // Classes and methods to handle data table
     //-------------------------------------------
 
-    /** This class describes the data table's data including column names. */
-    static private class MyTableModel extends AbstractTableModel {
-        /** Column names won't change. */
-        String[] names = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10"};
-        String[] columnNames = {names[0], names[1], names[2], names[3], names[4]};
-        Object[][] data;
-        // Store original data string array for convenience
-        String[] stringData;
-
-        public int getColumnCount() {
-            return columnNames.length;
-        }
-
-        public int getRowCount() {
-            if (data == null) return 0;
-            return data.length;
-        }
-
-        public String getColumnName(int col) {
-            return columnNames[col];
-        }
-
-        public Object getValueAt(int row, int col) {
-            if (data == null) return null;
-            return data[row][col];
-        }
-
-        public Class getColumnClass(int c) {
-            //return getValueAt(0, c).getClass();
-            return String.class;
-        }
-
-        public boolean isCellEditable(int row, int col) {return false;}
-
-        public void setValueAt(Object value, int row, int col) {
-            data[row][col] = value;
-            fireTableCellUpdated(row, col);
-        }
-    }
-
-
-    /** Increase the number of table's columns by 1. */
-    void addTableColumn() {
-        MyTableModel model = (MyTableModel)dataTable.getModel();
-
-        int colCount = model.getColumnCount();
-        if (colCount > 9) {
-            return;
-        }
-
-        // Change column names
-        model.columnNames = new String[colCount+1];
-        System.arraycopy(model.names, 0, model.columnNames, 0, colCount+1);
-
-         // Repackage data
-        if (model.stringData != null && model.stringData.length > 0) {
-            int dataItemCount = model.stringData.length;
-            int newColCount = colCount + 1;
-            int newRowCount = dataItemCount / newColCount;
-            newRowCount = dataItemCount % newColCount > 0 ? newRowCount + 1 : newRowCount;
-            model.data = new Object[newRowCount][newColCount];
-
-            int counter = 0;
-            out:
-            for (int row=0; row < newRowCount; row++) {
-                for (int col=0; col < newColCount; col++) {
-                    model.data[row][col] = model.stringData[counter++];
-                    if (counter >= dataItemCount) {
-                        break out;
-                    }
-                }
-            }
-        }
-
-        model.fireTableStructureChanged();
-    }
-
-
-    /** Reduce the number of table's columns by 1. */
-    void removeTableColumn() {
-        MyTableModel model = (MyTableModel)dataTable.getModel();
-
-        int colCount = model.getColumnCount();
-        if (colCount < 2) {
-            return;
-        }
-
-        // Change column names
-        model.columnNames = new String[colCount-1];
-        System.arraycopy(model.names, 0, model.columnNames, 0, colCount-1);
-
-        // Repackage data
-        if (model.stringData != null && model.stringData.length > 0) {
-            int dataItemCount = model.stringData.length;
-            int newColCount = colCount - 1;
-            int newRowCount = dataItemCount / newColCount;
-            newRowCount = dataItemCount % newColCount > 0 ? newRowCount + 1 : newRowCount;
-            model.data = new Object[newRowCount][newColCount];
-
-            int counter = 0;
-            out:
-            for (int row=0; row < newRowCount; row++) {
-                for (int col=0; col < newColCount; col++) {
-                    model.data[row][col] = model.stringData[counter++];
-                    if (counter >= dataItemCount) {
-                        break out;
-                    }
-                }
-            }
-        }
-
-        model.fireTableStructureChanged();
-    }
-
     /** Set table's data. */
     void setTableData(String[] data) {
         MyTableModel model = (MyTableModel)dataTable.getModel();
-
-        if (data == null || data.length < 1) {
-            model.data = null;
-            model.fireTableDataChanged();
-            return;
-        }
-        model.stringData = data;
-
-        int colCount = model.columnNames.length;
-        int rowCount = data.length / colCount;
-        rowCount = data.length % colCount > 0 ? rowCount + 1 : rowCount;
-        model.data = new Object[rowCount][colCount];
-
-        int counter = 0, dataCount = data.length;
-
-        out:
-        for (int row=0; row < rowCount; row++) {
-            for (int col=0; col < colCount; col++) {
-                model.data[row][col] = data[counter];
-                if (++counter >= dataCount) {
-                    break out;
-                }
-            }
-        }
-
-        model.fireTableDataChanged();
+        model.setTableData(data);
     }
 
-    /** Renderer used to change background color every Nth row. */
-    static private class MyRenderer extends DefaultTableCellRenderer {
-        int nthRow;
-        Color alternateRowColor = new Color(225, 235, 245);
 
-        public MyRenderer(int nthRow) {
-            super();
-            this.nthRow = nthRow;
-        }
-
-        public Component getTableCellRendererComponent(JTable table, Object value,
-                                                       boolean isSelected, boolean hasFocus,
-                                                       int row, int column) {
-
-            if (isSelected) {
-                super.setForeground(table.getSelectionForeground());
-                super.setBackground(table.getSelectionBackground());
-            } else {
-                super.setForeground(table.getForeground());
-
-                if ((row+1)%nthRow == 0) {
-                    super.setBackground(alternateRowColor);
-                }
-                else {
-                    super.setBackground(table.getBackground());
-                }
-            }
-            setFont(table.getFont());
-            setValue(value);
-
-            return this;
-        }
-
-    }
     //--------------------------------------------------
     // End of table stuff
     //--------------------------------------------------
@@ -519,8 +346,11 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
         dataTable = new JTable(new MyTableModel());
         MyRenderer renderer = new MyRenderer(5);
         renderer.setHorizontalAlignment(JLabel.RIGHT);
+        renderer.setTableModel((MyTableModel) dataTable.getModel());
         dataTable.setDefaultRenderer(String.class, renderer);
         dataTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        // Set the table header's text right aligned
+        ((DefaultTableCellRenderer)dataTable.getTableHeader().getDefaultRenderer()).setHorizontalAlignment(SwingConstants.RIGHT);
         // Set the font to one that's fixed-width
         Font newFont = new Font(Font.MONOSPACED, Font.PLAIN, dataTable.getFont().getSize());
         dataTable.setFont(newFont);
