@@ -145,7 +145,7 @@ public class cMsgEventSerialize {
 
             EventWriter eventWriter = new EventWriter(myBuf, maxBlockSizeInBytes,
                                                       maxBanksPerBlock, dictionary,
-                                         1, null, CompressionType.RECORD_UNCOMPRESSED);
+                                         1, CompressionType.RECORD_UNCOMPRESSED);
 
             // event - bank of ints, tag = 1, num = 1
             EventBuilder eventBuilder = new EventBuilder(1, DataType.INT32, 1);

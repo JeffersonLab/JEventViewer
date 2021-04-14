@@ -189,11 +189,11 @@ public class cMsgEventProducer {
             EventWriter eventWriterNew = null;
             if (addDictionary) {
                 eventWriterNew = new EventWriter(myBuf, 4*256, 3,
-                        dictionary, 1, null, CompressionType.RECORD_UNCOMPRESSED);
+                        dictionary, 1, CompressionType.RECORD_UNCOMPRESSED);
             }
             else {
                 eventWriterNew = new EventWriter(myBuf, 4*256, 3,
-                        null, 1, null, CompressionType.RECORD_UNCOMPRESSED);
+                        null, 1, CompressionType.RECORD_UNCOMPRESSED);
             }
 
             // event - bank of banks
@@ -285,11 +285,11 @@ public class cMsgEventProducer {
             EventWriter writer = null;
             if (addDictionary) {
                 writer = new EventWriter(myBuf, 4*256, 3,
-                        dictionary, 1, null, CompressionType.RECORD_UNCOMPRESSED);
+                        dictionary, 1, CompressionType.RECORD_UNCOMPRESSED);
             }
             else {
                 writer = new EventWriter(myBuf, 4*256, 3,
-                        null, 1, null, CompressionType.RECORD_UNCOMPRESSED);
+                        null, 1, CompressionType.RECORD_UNCOMPRESSED);
             }
 
             int numEvents=2, numRocs=2, ebId=3, roc1Id=1, roc2Id=2, detId=4;
@@ -390,7 +390,7 @@ public class cMsgEventProducer {
 
         try {
             EventWriter writer = new EventWriter(myBuf, 4*256, 3,
-                    null, 1, null, CompressionType.RECORD_UNCOMPRESSED);
+                    null, 1, CompressionType.RECORD_UNCOMPRESSED);
                                  //         sync, prestart,  go,    pause,  end
             int controlTypes[] = new int[] {0xFFD0, 0xFFD1, 0xFFD2, 0xFFD3, 0xFFD4};
 
