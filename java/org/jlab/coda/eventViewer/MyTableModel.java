@@ -15,13 +15,13 @@ import java.util.HashMap;
  * not an exact multiple of 200MB).
  * A single map is loaded into the table at any one time.
  */
-final class MyTableModel2 extends AbstractTableModel {
+final class MyTableModel extends AbstractTableModel {
 
     /** Buffer of memory mapped file. */
     private SimpleMappedMemoryHandler mappedMemoryHandler;
 
     /** Table's custom renderer. */
-    private MyRenderer2 dataTableRenderer;
+    private MyRenderer dataTableRenderer;
 
     /** Remember comments placed into 7th column of table. */
     private HashMap<String,String> comments;
@@ -80,20 +80,20 @@ final class MyTableModel2 extends AbstractTableModel {
 
 
     /** Constructor used for viewing event in tree form in EventTreePanel. */
-    public MyTableModel2() {
+    public MyTableModel() {
         this.comments = new HashMap<String,String>();
     }
 
     /** Constructor used for viewing event in tree form in EventTreePanel. */
-    public MyTableModel2(int version) {
+    public MyTableModel(int version) {
         evioVersion = version;
         this.comments = new HashMap<String,String>();
     }
 
 
     /** Constructor used for viewing memory mapped file in FileFrame. */
-    public MyTableModel2(SimpleMappedMemoryHandler mappedMemoryHandler,
-                         HashMap<String,String> comments, int version) {
+    public MyTableModel(SimpleMappedMemoryHandler mappedMemoryHandler,
+                        HashMap<String,String> comments, int version) {
 
         evioVersion = version;
         this.fileSize = mappedMemoryHandler.getFileSize();
@@ -114,7 +114,7 @@ final class MyTableModel2 extends AbstractTableModel {
         dataFromFile = true;
     }
 
-    public void setTableRenderer(MyRenderer2 dataTableRenderer) {
+    public void setTableRenderer(MyRenderer dataTableRenderer) {
         this.dataTableRenderer = dataTableRenderer;
     }
 

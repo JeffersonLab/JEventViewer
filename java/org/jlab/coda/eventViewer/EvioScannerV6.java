@@ -20,10 +20,10 @@ public class EvioScannerV6 {
     private final ArrayList<BlockHeaderV6> blockErrorNodes = new ArrayList<BlockHeaderV6>(10);
 
     /** Object for accessing file data. */
-    private final MyTableModel2 dataModel;
+    private final MyTableModel dataModel;
 
     /** Object for rendering file data in table. */
-    private final MyRenderer2 dataRenderer;
+    private final MyRenderer dataRenderer;
 
     /** Reference to GUI component that creates this object. */
     private FileFrameV6 parentComponent;
@@ -56,8 +56,8 @@ public class EvioScannerV6 {
      *                       or too little data to read block header
      */
     public EvioScannerV6(FileFrameV6 component,
-                         MyTableModel2 dataModel,
-                         MyRenderer2 dataRenderer,
+                         MyTableModel dataModel,
+                         MyRenderer dataRenderer,
                          FileFrameV6.ErrorScanTask errorTask) throws EvioException {
         this.parentComponent = component;
         this.dataModel       = dataModel;
@@ -128,7 +128,7 @@ public class EvioScannerV6 {
      * @return EvioNode object containing top-level evio structure;
      *         null if less than 8 bytes left.
      */
-    private EvioHeader extractEventNode(MyTableModel2 model,
+    private EvioHeader extractEventNode(MyTableModel model,
                                         long position, int place, long bytesLeft) {
 
         if (bytesLeft < 8) return null;
@@ -188,7 +188,7 @@ public class EvioScannerV6 {
      *
      * @return EvioHeader object containing top-level or event evio structure
      */
-    private EvioHeader searchForErrorInEvent(MyTableModel2 model,
+    private EvioHeader searchForErrorInEvent(MyTableModel model,
                                              long position, int place, long bytesLeft) {
         boolean debug=false;
 
@@ -278,7 +278,7 @@ if (debug) System.out.println("searchForErrorInEvent: place = " + place + ", buf
         // of evio structure being scanned in bytes.
         long endingPos = position + 4*node.dataLen;
         // Data source we're using
-        MyTableModel2 model = node.model;
+        MyTableModel model = node.model;
 
         // How much memory do child structures take up?
         long thisStructureDataWords = node.len;

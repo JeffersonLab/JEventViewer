@@ -28,10 +28,10 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
     private JTable dataTable;
 
     /** Table's data model. */
-    private MyTableModel2 dataTableModel;
+    private MyTableModel dataTableModel;
 
     /** Table's custom renderer. */
-    private MyRenderer2 dataTableRenderer;
+    private MyRenderer dataTableRenderer;
 
     /** Widget allowing scrolling of table widget. */
     private JScrollPane tablePane;
@@ -2285,9 +2285,9 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
         }
 
         // Set up the table widget for displaying data
-        dataTableModel = new MyTableModel2(mappedMemoryHandler, comments, evioVersion);
+        dataTableModel = new MyTableModel(mappedMemoryHandler, comments, evioVersion);
         dataTable = new JTable(dataTableModel);
-        dataTableRenderer = new MyRenderer2(8);
+        dataTableRenderer = new MyRenderer(8);
         dataTableRenderer.setTableModel(dataTableModel);
         dataTableRenderer.setHorizontalAlignment(SwingConstants.CENTER);
         dataTableModel.setTableRenderer(dataTableRenderer);

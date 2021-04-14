@@ -9,12 +9,12 @@ import java.util.HashMap;
  * Renderer used in displaying data to change background color every
  * Nth row and to highlight cells. Used in FileFrameBig and FileFrameV6.
  */
-final class MyRenderer2 extends DefaultTableCellRenderer {
+final class MyRenderer extends DefaultTableCellRenderer {
 
     private final int   nthRow;
     private static final Color alternateRowColor = new Color(240, 240, 240);
     private static final Color highlightGreen = new Color(210,250,210);
-    private MyTableModel2 dataTableModel;
+    private MyTableModel dataTableModel;
     private Color defaultHighlight = highlightGreen;
 
     /**
@@ -35,11 +35,11 @@ final class MyRenderer2 extends DefaultTableCellRenderer {
 
 
     /** Constructor. */
-    public MyRenderer2(int nthRow) {
+    public MyRenderer(int nthRow) {
         this(nthRow, null);
     }
 
-    public MyRenderer2(int nthRow, Color defaultHighlight) {
+    public MyRenderer(int nthRow, Color defaultHighlight) {
         super();
         this.nthRow = nthRow;
         if (defaultHighlight != null) {
@@ -52,7 +52,7 @@ final class MyRenderer2 extends DefaultTableCellRenderer {
      * Set the table's data model.
      * @param dataTableModel data model to use.
      */
-    public void setTableModel(MyTableModel2 dataTableModel) {
+    public void setTableModel(MyTableModel dataTableModel) {
         this.dataTableModel = dataTableModel;
     }
 

@@ -59,7 +59,7 @@ public class EventTreeMenu {
     private int currentEventNum, currentEventMax, currentEventMin;
 
     /** The panel that holds the tree and all associated widgets. */
-	private EventTreePanelv6 eventTreePanel;
+	private EventTreePanel eventTreePanel;
 
     /**
      * Source of the evio events being displayed.
@@ -174,7 +174,7 @@ public class EventTreeMenu {
 	 * Constructor. Holds the menus for a frame or internal frame that wants to manage a tree panel.
 	 * @param eventTreePanel holds the tree and all associated the widgets.
 	 */
-	public EventTreeMenu(final EventTreePanelv6 eventTreePanel, EventInfoPanel eventInfoPanel) {
+	public EventTreeMenu(final EventTreePanel eventTreePanel, EventInfoPanel eventInfoPanel) {
         this.eventTreePanel = eventTreePanel;
         this.eventInfoPanel = eventInfoPanel;
 	}
@@ -183,7 +183,7 @@ public class EventTreeMenu {
      * Get the main event display panel.
      * @return main event display panel.
      */
-    public EventTreePanelv6 getEventTreePanel() {
+    public EventTreePanel getEventTreePanel() {
         return eventTreePanel;
     }
 
