@@ -9,6 +9,7 @@ import javax.swing.event.TreeSelectionEvent;
 import javax.swing.event.TreeSelectionListener;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.text.*;
+import javax.swing.tree.DefaultTreeCellRenderer;
 import javax.swing.tree.TreePath;
 import javax.swing.tree.TreeSelectionModel;
 import java.awt.*;
@@ -365,14 +366,39 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
 
 
         // Set up the table widget for displaying data
-        dataTable = new JTable(new MyTableModel());
         MyRenderer renderer = new MyRenderer(5);
-        renderer.setHorizontalAlignment(JLabel.RIGHT);
-        renderer.setTableModel((MyTableModel) dataTable.getModel());
+        renderer.setHorizontalAlignment(SwingConstants.CENTER);
+
+        MyTableModel tableModel = new MyTableModel();
+        tableModel.setFirstColLabel("Position");
+
+        dataTable = new JTable(tableModel);
         dataTable.setDefaultRenderer(String.class, renderer);
         dataTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        // Set the table header's text right aligned
-        ((DefaultTableCellRenderer)dataTable.getTableHeader().getDefaultRenderer()).setHorizontalAlignment(SwingConstants.RIGHT);
+        dataTable.setSelectionBackground(Color.yellow);
+        dataTable.setSelectionForeground(Color.black);
+        dataTable.setModel(tableModel);
+        renderer.setTableModel(tableModel);
+
+        // Define class to get the text alignment of table header correct
+        class MyRender extends DefaultTableCellRenderer {
+            @Override
+            public Component getTableCellRendererComponent(JTable table,Object value,boolean isSelected,boolean hasFocus,int row,int column) {
+                super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+                if (column == 0) {
+                    setHorizontalAlignment(SwingConstants.RIGHT);
+                } else if (column == 6) {
+                    setHorizontalAlignment(SwingConstants.LEFT);
+                } else {
+                    setHorizontalAlignment(SwingConstants.CENTER);
+                }
+                return this;
+            }
+        }
+
+        MyRender tableHeaderRenderer = new MyRender();
+        dataTable.getTableHeader().setDefaultRenderer(tableHeaderRenderer);
+
         // Set the font to one that's fixed-width
         Font newFont = new Font(Font.MONOSPACED, Font.PLAIN, dataTable.getFont().getSize());
         dataTable.setFont(newFont);
@@ -426,6 +452,9 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
 		tree.setEditable(false);
 		tree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
 		tree.addTreeSelectionListener(this);
+        DefaultTreeCellRenderer renderer = (DefaultTreeCellRenderer) tree.getCellRenderer();
+        renderer.setTextSelectionColor(Color.black);
+        renderer.setBackgroundSelectionColor(Color.yellow);
 
         return new JScrollPane(tree);
 	}
@@ -442,7 +471,7 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
 		if (structure == null) {
 			return;
 		}
-		headerPanel.setHeader(structure, evioVersion, null);
+		headerPanel.setHeader(structure, evioVersion, dataCompressionType);
 
         // Old selection is not remembered
         structureSelection.clear();
@@ -573,7 +602,12 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
 				if (bytedata != null) {
                     String[] stringData = new String[bytedata.length];
 					for (byte i : bytedata) {
-						stringData[counter++] = String.format("%4d", i);
+                        if (intsInHex) {
+                            stringData[counter++] = String.format("%#04x", i);
+                        }
+                        else {
+                            stringData[counter++] = String.format("%4d", i);
+                        }
 					}
                     setTableData(stringData);
 				}
@@ -739,7 +773,7 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
         }
 		else {
 			tree.setModel(null);
-			headerPanel.setHeader(null, evioVersion, null);
+			headerPanel.setHeader(null, evioVersion, dataCompressionType);
 		}
 	}
 

@@ -119,6 +119,15 @@ final class MyTableModel extends AbstractTableModel {
     }
 
     /**
+     * Set the label of the first column of data table.
+     * @param label label of the first column of data table.
+     */
+    public void setFirstColLabel(String label) {
+        names[0] = label;
+        columnNames[0] = label;
+    }
+
+    /**
      * Get the evio version of the file being viewed.
      * @return evio version of the file being viewed.
      */
