@@ -2,6 +2,7 @@ package org.jlab.coda.eventViewer;
 
 import org.jlab.coda.jevio.BaseStructure;
 import org.jlab.coda.jevio.BaseStructureHeader;
+import org.jlab.coda.hipo.CompressionType;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -14,7 +15,13 @@ import java.awt.*;
 @SuppressWarnings("serial")
 public class HeaderPanel extends JPanel {
 
-    /** Number of bytes in selected structure. */
+	/** Number of bytes in selected structure. */
+	private NamedLabel evioVersion;
+
+	/** Number of bytes in selected structure. */
+	private NamedLabel compressed;
+
+	/** Number of bytes in selected structure. */
 	private NamedLabel lengthLabel;
 
     /** Type of selected structure: BANK, SEGMENT, or TAGSEGMENT. */
@@ -40,21 +47,26 @@ public class HeaderPanel extends JPanel {
         setLayout(new GridLayout(2, 1, 0, 3)); // rows, cols, hgap, vgap
         setBorder(new EmptyBorder(5, 5, 2, 0));   // top, left, bot, right
 
-		structureLabel = new NamedLabel("structure",   "description", 150);
-        dataTypeLabel  = new NamedLabel("data type",   "description", 150);
+		evioVersion = new NamedLabel("version",   "compression", 100);
+		compressed  = new NamedLabel("compression",   "compression", 100);
 
-		tagLabel    = new NamedLabel(   "tag", "number", 150);
-		numberLabel = new NamedLabel("number", "number", 150);
+		structureLabel = new NamedLabel("structure",   "compression", 150);
+		dataTypeLabel  = new NamedLabel("data type",   "compression", 150);
 
-        lengthLabel      = new NamedLabel(     "length", "description", 200);
-        descriptionLabel = new NamedLabel("description", "description", 200);
+		tagLabel    = new NamedLabel(   "tag", "number", 100);
+		numberLabel = new NamedLabel("number", "number", 100);
+
+        lengthLabel      = new NamedLabel(     "length", "compression", 300);
+        descriptionLabel = new NamedLabel("description", "compression", 300);
 
         // limit size of labels
         Dimension d1 = structureLabel.getPreferredSize();
         Dimension d2 = descriptionLabel.getPreferredSize();
 
-        structureLabel.setMaximumSize(d1);
-        dataTypeLabel.setMaximumSize(d1);
+		evioVersion.setMaximumSize(d1);
+		compressed.setMaximumSize(d1);
+		structureLabel.setMaximumSize(d1);
+		dataTypeLabel.setMaximumSize(d1);
         tagLabel.setMaximumSize(d1);
         numberLabel.setMaximumSize(d1);
         lengthLabel.setMaximumSize(d2);
@@ -63,14 +75,18 @@ public class HeaderPanel extends JPanel {
 		JPanel p0 = createLayoutPanel();
 		JPanel p1 = createLayoutPanel();
 
+		p0.add(evioVersion);
+		p0.add(Box.createRigidArea(new Dimension(5,0)));
 		p0.add(structureLabel);
-        p0.add(Box.createRigidArea(new Dimension(5,0)));
+		p0.add(Box.createRigidArea(new Dimension(5,0)));
 		p0.add(tagLabel);
         p0.add(Box.createRigidArea(new Dimension(5,0)));
 		p0.add(lengthLabel);
 
+		p1.add(compressed);
+		p1.add(Box.createRigidArea(new Dimension(5,0)));
 		p1.add(dataTypeLabel);
-        p1.add(Box.createRigidArea(new Dimension(5,0)));
+		p1.add(Box.createRigidArea(new Dimension(5,0)));
 		p1.add(numberLabel);
         p1.add(Box.createRigidArea(new Dimension(5,0)));
 		p1.add(descriptionLabel);
@@ -88,10 +104,14 @@ public class HeaderPanel extends JPanel {
 	/**
 	 * Set the fields in the panel based on the data in the header.
 	 * @param structure the structure to use to set the fields, mostly from its header.
+	 * @param version evio version of data.
+	 * @param cType compression type of data.
 	 */
-	public void setHeader(BaseStructure structure) {
+	public void setHeader(BaseStructure structure, int version, CompressionType cType) {
 
 		if ((structure == null) || (structure.getHeader() == null)) {
+			evioVersion.setText("   ");
+			compressed.setText("   ");
 			structureLabel.setText("   ");
 			lengthLabel.setText("   ");
 			tagLabel.setText("   ");
@@ -101,6 +121,20 @@ public class HeaderPanel extends JPanel {
 		}
 		else {
 			BaseStructureHeader header = structure.getHeader();
+			if (version < 2) {
+				evioVersion.setText("   ");
+			}
+			else {
+				evioVersion.setText("" + version);
+			}
+
+			if (cType != null) {
+				compressed.setText(cType.getDescription());
+			}
+			else {
+				compressed.setText("   ");
+			}
+
 			structureLabel.setText("" + structure.getStructureType());
 			lengthLabel.setText(4*header.getLength() + " bytes");
 			tagLabel.setText("" + header.getTag());

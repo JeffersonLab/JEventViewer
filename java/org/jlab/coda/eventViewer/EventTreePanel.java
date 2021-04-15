@@ -1,5 +1,6 @@
 package org.jlab.coda.eventViewer;
 
+import org.jlab.coda.hipo.CompressionType;
 import org.jlab.coda.jevio.*;
 
 import javax.swing.*;
@@ -87,6 +88,15 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
     /** Are we currently viewing numerical data or Composite data in XML (text) ? */
     boolean viewText = false;
 
+    // A couple other things that must be viewed but passed thru EventTreeMenu
+
+    /** Evio version of data being viewed. */
+    private int evioVersion;
+
+    /** What type of data compression? */
+    private CompressionType dataCompressionType;
+
+
 
 
     /** Class helping to contain info about the currently selected evio structure. */
@@ -116,6 +126,18 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
 		// add all the components
 		addComponents();
 	}
+
+    /**
+     * Set the evio version of data being viewed.
+     * @param version evio version of data being viewed.
+     */
+    public void setEvioVersion(int version) {evioVersion = version;}
+
+    /**
+     * Set the compression type of data being viewed.
+     * @param type compression type of data being viewed.
+     */
+    public void setDataCompressionType(CompressionType type) {dataCompressionType = type;}
 
     /**
      * Get the selection path information list.
@@ -420,7 +442,7 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
 		if (structure == null) {
 			return;
 		}
-		headerPanel.setHeader(structure);
+		headerPanel.setHeader(structure, evioVersion, null);
 
         // Old selection is not remembered
         structureSelection.clear();
@@ -700,7 +722,7 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
 
 		if (event != null) {
             tree.setModel(event.getTreeModel());
-			headerPanel.setHeader(event);
+			headerPanel.setHeader(event, evioVersion, dataCompressionType);
 		    expandAll();
 
             // Get the current TreePath, if any,
@@ -717,7 +739,7 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
         }
 		else {
 			tree.setModel(null);
-			headerPanel.setHeader(null);
+			headerPanel.setHeader(null, evioVersion, null);
 		}
 	}
 

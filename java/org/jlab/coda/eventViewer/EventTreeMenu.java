@@ -1,5 +1,6 @@
 package org.jlab.coda.eventViewer;
 
+import org.jlab.coda.hipo.CompressionType;
 import org.jlab.coda.jevio.*;
 
 import javax.swing.*;
@@ -101,6 +102,9 @@ public class EventTreeMenu {
 
     /** Evio version of opened file. Default to v6. */
     private int evioVersion = 6;
+
+    /** What type of data compression? */
+    private CompressionType dataCompressionType = CompressionType.RECORD_UNCOMPRESSED;
 
     //----------------------
     // Dictionary stuff
@@ -458,6 +462,11 @@ public class EventTreeMenu {
                     eventTreePanel.setEvent(ev);
                 }
 
+                evioVersion = cmsgHandler.getEvioVersion();
+                dataCompressionType = cmsgHandler.getDataCompressionType();
+                eventTreePanel.setEvioVersion(evioVersion);
+                eventTreePanel.setDataCompressionType(dataCompressionType);
+
                 eventInfoPanel.setSource("cMsg messages");
                 int listSize = cmsgHandler.getListSize();
 
@@ -522,6 +531,11 @@ public class EventTreeMenu {
                 if (ev != null) {
                     eventTreePanel.setEvent(ev);
                 }
+
+                evioVersion = etHandler.getEvioVersion();
+                dataCompressionType = etHandler.getDataCompressionType();
+                eventTreePanel.setEvioVersion(evioVersion);
+                eventTreePanel.setDataCompressionType(dataCompressionType);
 
                 eventInfoPanel.setSource("ET buffers");
                 listSize = etHandler.getListSize();
@@ -1785,6 +1799,9 @@ public class EventTreeMenu {
         prevButton.setEnabled(false);
         xmlExportItem.setEnabled(evioFile != null);
         eventTreePanel.setEvent(null);
+        // Tell the panel which will tell the headerPanel which will display to user
+        eventTreePanel.setEvioVersion(evioVersion);
+        eventTreePanel.setDataCompressionType(dataCompressionType);
         // automatically go to the first event
         nextButton.doClick();
     }
@@ -1827,6 +1844,8 @@ public class EventTreeMenu {
         prevButton.setEnabled(false);
         xmlExportItem.setEnabled(evioFile != null);
         eventTreePanel.setEvent(null);
+        eventTreePanel.setEvioVersion(evioVersion);
+        eventTreePanel.setDataCompressionType(dataCompressionType);
     }
 
 	/**
@@ -1937,7 +1956,7 @@ public class EventTreeMenu {
         int returnVal = chooser.showOpenDialog(eventTreePanel);
 
         if (returnVal == JFileChooser.APPROVE_OPTION) {
-            eventTreePanel.getHeaderPanel().setHeader(null);
+            eventTreePanel.getHeaderPanel().setHeader(null, evioVersion, dataCompressionType);
 
             // remember which file was chosen
             File selectedFile = chooser.getSelectedFile();
@@ -1959,6 +1978,8 @@ public class EventTreeMenu {
                 // Try creating a new reader, if it fails the old is retained
                 EvioReader reader = new EvioReader(selectedFile);
                 int evCount = reader.getEventCount();
+                evioVersion = reader.getEvioVersion();
+                dataCompressionType = reader.getFirstBlockHeader().getCompressionType();
 
                 // Close current reader if any
                 if (evioFileReader != null) {
@@ -2081,7 +2102,7 @@ e.printStackTrace();
     public EvioReader openEventFile(File file) {
         currentEvent.setValue(0);
 
-        eventTreePanel.getHeaderPanel().setHeader(null);
+        eventTreePanel.getHeaderPanel().setHeader(null, evioVersion, dataCompressionType);
 
         // remember which file was chosen
         dataFilePath = file.getAbsolutePath();

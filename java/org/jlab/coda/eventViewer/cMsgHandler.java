@@ -1,6 +1,7 @@
 package org.jlab.coda.eventViewer;
 
 import org.jlab.coda.cMsg.*;
+import org.jlab.coda.hipo.CompressionType;
 import org.jlab.coda.jevio.*;
 
 import javax.swing.*;
@@ -67,6 +68,27 @@ public class cMsgHandler {
     /** Filter allowing only certain events into eventList. */
     private Filter eventFilter = Filter.EVERY;
 
+    /** Evio version of data from ET. Default to v6. */
+    private int evioVersion = 6;
+
+    /** What type of data compression? */
+    private CompressionType dataCompressionType = CompressionType.RECORD_UNCOMPRESSED;
+
+
+
+
+
+    /**
+     * Get the evio version of data being viewed.
+     * @return evio version of data being viewed.
+     */
+    public int getEvioVersion() {return evioVersion;}
+
+    /**
+     * Get the compression type of data being viewed.
+     * @return compression type of data being viewed.
+     */
+    public CompressionType getDataCompressionType() {return dataCompressionType;}
 
 
     /**
@@ -251,6 +273,9 @@ public class cMsgHandler {
             ByteBuffer buf = ByteBuffer.wrap(msg.getByteArray());
             EvioReader reader = new EvioReader(buf);
             String dictionary = reader.getDictionaryXML();
+
+            evioVersion = reader.getEvioVersion();
+            dataCompressionType = reader.getFirstBlockHeader().getCompressionType();
 
             // If no dictionary defined in buffer, look for it in message payload
             if (dictionary == null) {

@@ -4,6 +4,7 @@ import org.jlab.coda.et.*;
 import org.jlab.coda.et.enums.Mode;
 import org.jlab.coda.et.enums.Modify;
 import org.jlab.coda.et.exception.*;
+import org.jlab.coda.hipo.CompressionType;
 import org.jlab.coda.jevio.EvioEvent;
 import org.jlab.coda.jevio.EvioException;
 import org.jlab.coda.jevio.EvioReader;
@@ -79,6 +80,27 @@ public class EtHandler {
     /** Filter allowing only certain events into eventList. */
     private Filter eventFilter = Filter.EVERY;
 
+    /** Evio version of data from ET. Default to v6. */
+    private int evioVersion = 6;
+
+    /** What type of data compression? */
+    private CompressionType dataCompressionType = CompressionType.RECORD_UNCOMPRESSED;
+
+
+
+
+
+    /**
+     * Get the evio version of data being viewed.
+     * @return evio version of data being viewed.
+     */
+    public int getEvioVersion() {return evioVersion;}
+
+    /**
+     * Get the compression type of data being viewed.
+     * @return compression type of data being viewed.
+     */
+    public CompressionType getDataCompressionType() {return dataCompressionType;}
 
     /**
      * Get the event filter to use on each event before adding to list.
@@ -344,6 +366,8 @@ public class EtHandler {
                             reader.setBuffer(buf);
                         }
                         dictionary = reader.getDictionaryXML();
+                        evioVersion = reader.getEvioVersion();
+                        dataCompressionType = reader.getFirstBlockHeader().getCompressionType();
 
                         while ((evioEv = reader.parseNextEvent()) != null) {
                             evioEv.setDictionaryXML(dictionary);
