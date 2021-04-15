@@ -47,7 +47,7 @@ public class cMsgHandler {
     private cMsgSubscriptionHandle handle;
 
     /** Callback to run when receiving a message. */
-    private myCallback callback = new myCallback();
+    private final myCallback callback = new myCallback();
 
 
     /** Keep track of event numbering across messages. */
@@ -63,7 +63,7 @@ public class cMsgHandler {
     private final int maxListSize = 1000;
 
     /** List of received EvioEvent objects (parsed ET buffers). */
-    private ArrayList<EvioEvent> eventList = new ArrayList<EvioEvent>(maxListSize);
+    private final ArrayList<EvioEvent> eventList = new ArrayList<EvioEvent>(maxListSize);
 
     /** Filter allowing only certain events into eventList. */
     private Filter eventFilter = Filter.EVERY;
@@ -166,8 +166,6 @@ public class cMsgHandler {
         handle  = null;
         subject = null;
         type    = null;
-
-        return;
     }
 
     /**
@@ -216,8 +214,6 @@ public class cMsgHandler {
         // each new connection means resubscribing
         subject = null;
         type = null;
-
-        return;
     }
 
     /**
@@ -325,7 +321,6 @@ public class cMsgHandler {
 
         event.setEventNumber(eventNum++);
         eventList.add(event);
-        return;
     }
 
     /**

@@ -75,7 +75,7 @@ public class EtHandler {
     private final int maxListSize = 1000;
 
     /** List of received EvioEvent objects (parsed ET buffers). */
-    private ArrayList<EvioEvent> eventList = new ArrayList<EvioEvent>(maxListSize);
+    private final ArrayList<EvioEvent> eventList = new ArrayList<EvioEvent>(maxListSize);
 
     /** Filter allowing only certain events into eventList. */
     private Filter eventFilter = Filter.EVERY;
@@ -139,7 +139,6 @@ public class EtHandler {
 
         event.setEventNumber(eventNum++);
         eventList.add(event);
-        return;
     }
 
     /**
