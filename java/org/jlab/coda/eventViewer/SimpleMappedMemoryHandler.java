@@ -2,7 +2,6 @@ package org.jlab.coda.eventViewer;
 
 import org.jlab.coda.hipo.FileHeader;
 import org.jlab.coda.hipo.RecordHeader;
-import org.jlab.coda.jevio.Utilities;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -26,8 +25,8 @@ public class SimpleMappedMemoryHandler {
     private long fileSize;
 
     /** Max map size in bytes (1GB) */
-    //private final long maxMapSize = 1000000000L;
-    private long maxMapSize = 4052L;
+    private long maxMapSize = 1000000000L;
+    //private long maxMapSize = 4052L; // For testing, must be multiple of 4
 
     /** Byte order of data in buffer. */
     private ByteOrder order;
