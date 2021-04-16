@@ -129,8 +129,8 @@ System.out.println("SET buf size to " + bufSize);
 
 
         EventWriter writer = new EventWriter(writeFileName, null, null, 1, 0,
-                0, 0, order, xmlDict, true, false, null,
-                1, 1, 1, 1, CompressionType.RECORD_COMPRESSION_LZ4,
+                0, 2, order, xmlDict, true, false, null,
+                1, 1, 1, 1, CompressionType.RECORD_UNCOMPRESSED,
                 1, 8, 0);
 
         // Different data for each event
