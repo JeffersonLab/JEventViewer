@@ -164,7 +164,12 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
     /** Thread to handle search in background. */
     private SearchTask task;
 
+    /** Evio version of viewed file. */
     private final int evioVersion;
+
+    /** DOes file contain compressed data? */
+    private boolean isCompressed;
+
     private final long magicNumber = ((long)BlockHeader.MAGIC_INT) & 0xffffffffL;
 
 
@@ -2390,11 +2395,18 @@ System.out.println("handleEventSearchForward: skip forward " + totalWords + " wo
                         break;
                     case 5:
                         // Evio Event
+                        if (isCompressed) {
+                            JOptionPane.showMessageDialog(FileFrameV6.this, "Data is compressed, no event searching possible", "Return",
+                                    JOptionPane.INFORMATION_MESSAGE);
+                            break;
+                        }
+
                         EvioHeader node = handleEventSearchBack();
                         if (node == null) {
                             // Error
                             break;
                         }
+
                         addEventInfoPanel();
                         updateEventInfoPanel(node);
                         setSliderPosition();
@@ -2441,6 +2453,12 @@ System.out.println("handleEventSearchForward: skip forward " + totalWords + " wo
                         break;
                     case 5:
                         // Evio Event
+                        if (isCompressed) {
+                            JOptionPane.showMessageDialog(FileFrameV6.this, "Data is compressed, no event searching possible", "Return",
+                                    JOptionPane.INFORMATION_MESSAGE);
+                            break;
+                        }
+
                         EvioHeader node = handleEventSearchForward();
                         if (node == null) {
                             // Error
@@ -2573,8 +2591,10 @@ System.out.println("handleEventSearchForward: skip forward " + totalWords + " wo
         // Create object to memory map the whole file (perhaps in chunks)
         try {
             mappedMemoryHandler = new SimpleMappedMemoryHandler(file, order);
+            isCompressed = mappedMemoryHandler.isCompressed();
         }
         catch (IOException e) {
+            e.printStackTrace();
             return;
         }
 

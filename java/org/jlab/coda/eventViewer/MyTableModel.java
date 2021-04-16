@@ -505,6 +505,13 @@ final class MyTableModel extends AbstractTableModel {
             return null;
         }
 
+        boolean dataCompressed = mappedMemoryHandler.isCompressed();
+        boolean isTrailer = false;
+        long trailerPos = mappedMemoryHandler.getFileHeader().getTrailerPosition();
+        if ((trailerPos != 0) && (trailerPos + RecordHeader.MAGIC_OFFSET <= 4L*magicNumIndex)) {
+            isTrailer = true;
+        }
+
         // For evio 6 we want to light the 14 word header differently from
         // the index array and differently from the user header.
         // All will be in related colors.
@@ -528,31 +535,35 @@ final class MyTableModel extends AbstractTableModel {
             fireTableCellUpdated(mrc[1], mrc[2]);
         }
 
-        // Next the index array whose length is always a multiple of 4
-        int indexWords = blockData[RecordHeader.INDEX_ARRAY_OFFSET/4]/4;
-        lastIndex += indexWords;
-        for (int i = 0; i < indexWords; i++) {
-            int[] mrc = getMapRowCol(lastIndex - i);
-            if (mrc == null) {
-                return null;
+        // If data is compressed, so is the index array and user header.
+        // Trailer is never compressed.
+        if (!dataCompressed || isTrailer) {
+            // Next the index array whose length is always a multiple of 4
+            int indexWords = blockData[RecordHeader.INDEX_ARRAY_OFFSET / 4] / 4;
+            lastIndex += indexWords;
+            for (int i = 0; i < indexWords; i++) {
+                int[] mrc = getMapRowCol(lastIndex - i);
+                if (mrc == null) {
+                    return null;
+                }
+                setMapIndex(mrc[0]);
+                dataTableRenderer.setHighlightCell(color2, mrc[1], mrc[2], isError);
+                fireTableCellUpdated(mrc[1], mrc[2]);
             }
-            setMapIndex(mrc[0]);
-            dataTableRenderer.setHighlightCell(color2, mrc[1], mrc[2], isError);
-            fireTableCellUpdated(mrc[1], mrc[2]);
-        }
 
-        // Finally the user header, the length which we round up to the
-        // nearest 4-byte boundary to include padding.
-        int userHdrWords = Utilities.getWords(blockData[RecordHeader.USER_LENGTH_OFFSET/4]);
-        lastIndex += userHdrWords;
-        for (int i = 0; i < userHdrWords; i++) {
-            int[] mrc = getMapRowCol(lastIndex - i);
-            if (mrc == null) {
-                return null;
+            // Finally the user header, the length which we round up to the
+            // nearest 4-byte boundary to include padding.
+            int userHdrWords = Utilities.getWords(blockData[RecordHeader.USER_LENGTH_OFFSET / 4]);
+            lastIndex += userHdrWords;
+            for (int i = 0; i < userHdrWords; i++) {
+                int[] mrc = getMapRowCol(lastIndex - i);
+                if (mrc == null) {
+                    return null;
+                }
+                setMapIndex(mrc[0]);
+                dataTableRenderer.setHighlightCell(color3, mrc[1], mrc[2], isError);
+                fireTableCellUpdated(mrc[1], mrc[2]);
             }
-            setMapIndex(mrc[0]);
-            dataTableRenderer.setHighlightCell(color3, mrc[1], mrc[2], isError);
-            fireTableCellUpdated(mrc[1], mrc[2]);
         }
 
         return blockData;

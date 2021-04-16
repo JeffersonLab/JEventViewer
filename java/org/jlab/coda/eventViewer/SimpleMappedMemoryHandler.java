@@ -1,6 +1,7 @@
 package org.jlab.coda.eventViewer;
 
 import org.jlab.coda.hipo.FileHeader;
+import org.jlab.coda.hipo.HipoException;
 import org.jlab.coda.hipo.RecordHeader;
 
 import java.io.File;
@@ -61,6 +62,11 @@ public class SimpleMappedMemoryHandler {
      *  file and first block headers for evio version 6.
      *  For earlier evio versions this is 8 words which will be our default. */
     private int firstDataIndex = 8;
+
+    /** Is the data in file compressed? Always false if evio version < 6. */
+    private boolean isCompressed;
+
+
 
     /**
      * Constructor.
@@ -154,6 +160,12 @@ public class SimpleMappedMemoryHandler {
 //System.out.println("mmapHandler: fileHeaderBytes = " + fileHeaderBytes);
 //System.out.println("mmapHandler: recordHeaderTotalLen = " + recHeader.getTotalHeaderLength());
 //System.out.println("mmapHandler: firstDataIndex = " + firstDataIndex);
+
+                // Now take this one step further and find out if data in the first record is compressed.
+                try {
+                    isCompressed = RecordHeader.isCompressed(maps.get(0), fileHeaderBytes);
+                }
+                catch (HipoException e) {}
             }
 
             // If the actual order is not what it was initially set to, fix it
@@ -187,6 +199,14 @@ public class SimpleMappedMemoryHandler {
         mapCount = 1;
         maps.add(buf);
     }
+
+
+    /**
+     * Does the first record of the first map contain compressed data?
+     * @return {@code true} if data in first record of the first
+     *          memory map is compressed, else {@code false}.
+     */
+    public boolean isCompressed() {return isCompressed;}
 
 
     /**

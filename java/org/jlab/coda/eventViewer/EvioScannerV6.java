@@ -548,7 +548,15 @@ if (debug) System.out.println("Error 4: " + node.error);
             compressedDataWords   = compWord & 0xffffff;
             userHeaderBytes       = dataModel.getInt(bufPos + RecordHeader.USER_LENGTH_OFFSET); // No padding
             totalHeaderBytes      = 4*blockHdrWordSize + indexBytes + 4*Utilities.getWords(userHeaderBytes);
-            dataBytes             = (int)(4*blockWordSize) - totalHeaderBytes;
+
+            // If no compression ...
+            if (compressionType == 0) {
+                dataBytes = (int) (4 * blockWordSize) - totalHeaderBytes;
+            }
+            else {
+                // If we have compressed data, index and user header are part of that data
+                dataBytes = (int) (4 * (blockWordSize - blockHdrWordSize));
+            }
 
             boolean isTrailer = RecordHeader.isEvioTrailer(bitInfo);
 //System.out.println("errorScan: magic # = 0x" + Integer.toHexString(magicNum));
@@ -616,10 +624,10 @@ if (debug) System.out.println("Error 4: " + node.error);
                 }
             }
             else {
-                if ((compressedDataWords != dataBytes/4) || uncompressedDataBytes != 0) {
+                if ((compressedDataWords != dataBytes/4) || uncompressedDataBytes == 0) {
                     // If compressing, lengths are wrong but we can continue scanning
                     // since these specific lengths are not used for scanning file.
-                    blockNode.error = "Record: compressing data, but comp len wrong or uncomp len != 0";
+                    blockNode.error = "Record: compressing data, but comp len wrong or uncomp len = 0";
                     blockErrorNodes.add(blockNode);
                     if (debug) System.out.println("scanFile: error = " + blockNode.error);
                     foundError = true;
