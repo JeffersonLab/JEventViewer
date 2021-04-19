@@ -1819,7 +1819,11 @@ public class EventTreeMenu {
         try {
             evioVersion = Utilities.getEvioVersion(file);
         }
-        catch (EvioException e) {}
+        catch (EvioException e) {
+            // This happens, most likely, cause file is not in evio format.
+            // Display data anyway. Use the simpler display code.
+            evioVersion = 0;
+        }
 
         if (evioVersion > 5) {
             new FileFrameV6(file, evioVersion);
