@@ -10,7 +10,7 @@ import java.util.Random;
 /**
  * Test program.
  * @author timmer
- * Feb 14, 2014
+ * Apr 14, 2021
  */
 public class CompactBuilderTest {
 
@@ -22,21 +22,13 @@ public class CompactBuilderTest {
                     "          <leaf name=\"xpos(%n)\"  tag=\"6\" num=\"5\" />\n" +
                     "          <bank name=\"ypos(%n)\"  tag=\"6\" num=\"6\" />\n" +
                     "      </bank >\n" +
-                    "      <bank name=\"TOF\"     tag=\"8\" num=\"0\" >\n" +
-                    "          <leaf name=\"x\"   tag=\"8\" num=\"1\" />\n" +
-                    "          <bank name=\"y\"   tag=\"8\" num=\"2\" />\n" +
-                    "      </bank >\n" +
                     "      <bank name=\"BCAL\"      tag=\"7\" >\n" +
                     "          <leaf name=\"x(%n)\" tag=\"7\" num=\"1-3\" />\n" +
                     "      </bank >\n" +
                     "  </bank >\n" +
-                    "  <dictEntry name=\"JUNK\" tag=\"5\" num=\"0\" />\n" +
                     "  <dictEntry name=\"SEG5\" tag=\"5\" >\n" +
                     "       <description format=\"Old Format\" >tag 5 description</description>\n" +
                     "  </dictEntry>\n" +
-                    "  <bank name=\"Rangy\" tag=\"75 - 78\" >\n" +
-                    "      <leaf name=\"BigTag\" tag=\"76\" />\n" +
-                    "  </bank >\n" +
                     "</xmlDict>\n";
 
 
@@ -161,7 +153,7 @@ System.out.println("SET buf size to " + bufSize);
     }
 
 
-     void setDataSize(int elementCount) {
+    void setDataSize(int elementCount) {
 
         int1    = new int   [elementCount];
         byte1   = new byte  [elementCount];
@@ -182,6 +174,18 @@ System.out.println("SET buf size to " + bufSize);
             double1[i] = rand.nextDouble() * i;
             string1[i] = "hey" + (i+1);
         }
+
+        for (int i=0; i < elementCount; i++) {
+            int1[i]    = 0xc0da0100;
+            byte1[i]   = (byte)  i;
+            short1[i]  = (short) i;
+            long1[i]   = i;
+            float1[i]  = i;
+            double1[i] = i;
+            string1[i] = "hey" + (i+1);
+        }
+
+
     }
 
 
