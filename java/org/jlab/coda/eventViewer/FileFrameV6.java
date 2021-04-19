@@ -606,13 +606,10 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
                         if (val == findValue) {
 //System.out.println("FOUND val = " + Long.toHexString(findValue) + "!!!, getBLock = " + getBlock);
 
-                            // If we're looking for a block header ...
+                            // If we're looking for a record header ...
                             if (getBlock) {
-                                blockData = dataTableModel.highLightBlockHeader(
-                                        highlightBlkHdr,
-                                        highlightBlkHdrIndex,
-                                        highlightBlkHdrUser,
-                                        row, col, false);
+                                // First read the record header data
+                                blockData = dataTableModel.getRecordHeader(row, col);
                                 if (blockData == null) {
                                     // Error of some kind or found file header
                                     foundValue = false;
@@ -620,17 +617,22 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
                                     continue;
                                 }
 
-                                // We just found the magic #, but is it part of a block header?
+                                // We just found the magic #, but is it part of a record header?
                                 // Check other values to see if they make sense as a header.
-                                // The lowest 8 bytes of 6th word is version which should be
-                                // between 2 & 6 inclusive.
-                                if ( ((blockData[5] & 0xf) < 2) || ((blockData[5] & 0xf) > 6) ) {
+                                // The lowest 8 bytes of 6th word is version which should be 6.
+                                if ((blockData[5] & 0xf) != 6) {
                                     // This is most likely NOT a header, so continue search
                                     foundValue = false;
-//System.out.println("continue, error in block data");
+//System.out.println("continue, error in record data, evio version is " + (blockData[5] & 0xf));
                                     continue;
                                 }
-                            }
+
+                                dataTableModel.highLightBlockHeader(
+                                        highlightBlkHdr,
+                                        highlightBlkHdrIndex,
+                                        highlightBlkHdrUser,
+                                        row, col, false);
+                             }
                             else {
                                 dataTableModel.highLightCell(highlightValue, row, col, false);
                             }
@@ -735,27 +737,31 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
 
                             // If we're looking for a block header ...
                             if (getBlock) {
-                                blockData = dataTableModel.highLightBlockHeader(
+                                // First read the record header data
+                                blockData = dataTableModel.getRecordHeader(row, col);
+                                if (blockData == null) {
+                                    // Error of some kind or found file header
+                                    foundValue = false;
+//System.out.println("continue, error in highlightBlockHeader");
+                                    continue;
+                                }
+
+                                // We just found the magic #, but is it part of a record header?
+                                // Check other values to see if they make sense as a header.
+                                // The lowest 8 bytes of 6th word is version which should be 6.
+                                //
+                                if ((blockData[5] & 0xf) != 6) {
+                                    // This is most likely NOT a header, so continue search
+                                    foundValue = false;
+//System.out.println("continue, error in record data, evio version is " + (blockData[5] & 0xf));
+                                    continue;
+                                }
+
+                                dataTableModel.highLightBlockHeader(
                                         highlightBlkHdr,
                                         highlightBlkHdrIndex,
                                         highlightBlkHdrUser,
                                         row, col, false);
-                                if (blockData == null) {
-                                    // Error of some kind or found file header
-                                    foundValue = false;
-                                    continue;
-                                }
-
-                                // We just found the magic #, but is it part of a block header?
-                                // Check other values to see if they make sense as a header.
-                                // The lowest 8 bytes of 6th word is version which should be
-                                // between 2 & 6 inclusive.
-                                if ( ((blockData[5] & 0xf) < 2) || ((blockData[5] & 0xf) > 6) ) {
-                                    // This is most likely NOT a header, so continue search
-                                    foundValue = false;
-// System.out.println("continue, error in block data");
-                                    continue;
-                                }
                             }
                             else {
                                 dataTableModel.highLightCell(highlightValue, row, col, false);
@@ -1063,6 +1069,7 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
 
         // See if we're at the beginning of the file
         int firstDataIndex = mappedMemoryHandler.getFirstDataIndex();
+        // Transform row & col into absolute index
         long wordIndex = dataTableModel.getClosestWordIndexOf(row, col);
         mapRowCol = dataTableModel.getMapRowCol(wordIndex);
         if (mapRowCol == null) return null;
@@ -1082,66 +1089,10 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
         else {
             // If in first(index)/last(comment) column ...
             if (!dataTableModel.isDataColumn(col)) {
-System.out.println("handleEventSearchForward:  YOU HAVE SELECTED A ROW # or COMMENT column!");
-
-                // If starting past the first row & col, error.
-                // Must start at an event.
-                if (row > 0 || col >= dataTableModel.getColumnCount() - 1) {
-                    JOptionPane.showMessageDialog(this, "Start at 0 or beginning of known event", "Return",
+                JOptionPane.showMessageDialog(this, "Start in file header or beginning of known event", "Return",
                             JOptionPane.INFORMATION_MESSAGE);
 
-                    return null;
-                }
-                // If no selection made yet (before all rows)
-                else {
-
-                    // Note: we won't end up here if we're at the very beginning of the file
-                    // row = 0 & col = 1 if no selection made
-
-                    // Transform row & col into absolute index
-                    wordIndex = dataTableModel.getWordIndexOf(row, col);
-
-                    //---------------------¬-------------------------------------------------
-                    // Are we right at the beginning of a header? If so, move past it.
-                    //----------------------------------------------------------------------
-                    mapRowCol = dataTableModel.getMapRowCol(wordIndex + 7);
-
-                    // First make sure we getting our data from the
-                    // correct (perhaps next) memory mapped buffer.
-                    dataTableModel.setMapIndex(mapRowCol[0]);
-
-                    // Look forward 7 words to possible magic #
-                    val = dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2]);
-
-                    // If it is indeed a magic number, there is a block header at very beginning
-                    if (val == magicNumber) {
-                        searchDone = true;
-
-                        // Find out the size of the record header and hop over it.
-                        // To do this we need to read the header size, the index array size and the user header size.
-                        mapRowCol = dataTableModel.getMapRowCol(wordIndex + 2);
-                        long headerWords = dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2]);
-
-                        mapRowCol = dataTableModel.getMapRowCol(wordIndex + 4);
-                        long arrayWords = dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2])/4;
-
-                        mapRowCol = dataTableModel.getMapRowCol(wordIndex + 6);
-                        long userHdrWords = Utilities.getWords((int)dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2]));
-
-                        long totalWords = headerWords + arrayWords + userHdrWords;
-
-                        wordIndex += totalWords;
-System.out.println("handleEventSearchForward: skip forward " + totalWords + " words");
-
-                        // Put new cell in view & select
-                        scrollToIndex(wordIndex, highlightEvntHdr, true);
-                        node = new EvioHeader((int) (dataTableModel.getLongValueAt(wordIndex)),
-                                (int) (dataTableModel.getLongValueAt(wordIndex + 1)),
-                                wordIndex);
-                        return node;
-                    }
-                    //---------------------------------------------------------------
-                }
+                return null;
             }
         }
 
@@ -1151,9 +1102,6 @@ System.out.println("handleEventSearchForward: skip forward " + totalWords + " wo
 
         // Highlight selected event header len & next word
         dataTableModel.highLightEventHeader(highlightEvntHdr, row, col, false);
-
-        // Transform row & col into absolute index
-        wordIndex = dataTableModel.getWordIndexOf(row,col);
 
         node = new EvioHeader((int) (dataTableModel.getLongValueAt(wordIndex)),
                               (int) (dataTableModel.getLongValueAt(wordIndex + 1)),
@@ -1207,20 +1155,24 @@ System.out.println("handleEventSearchForward: skip forward " + totalWords + " wo
 //System.out.println("  ***  at possible block index, map = " + mapRowCol[0] + ", r = " + mapRowCol[1] +
 //        ", c = " + mapRowCol[2] + ", val = " + val + ", in hex 0x" + Long.toHexString(val));
 
-        // If we're at the front of block header, hop past it
         if (val == magicNumber) {
+            // Possible that this is a record header, but check to see if header words = 14
             mapRowCol = dataTableModel.getMapRowCol(wordIndex + 2);
             long headerWords = dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2]);
 
-            mapRowCol = dataTableModel.getMapRowCol(wordIndex + 4);
-            long arrayWords = dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2])/4;
+            if (headerWords == 14) {
+                // Most likely a header
+                mapRowCol = dataTableModel.getMapRowCol(wordIndex + 4);
+                long arrayWords = dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2])/4;
 
-            mapRowCol = dataTableModel.getMapRowCol(wordIndex + 6);
-            long userHdrWords = Utilities.getWords((int)dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2]));
+                mapRowCol = dataTableModel.getMapRowCol(wordIndex + 6);
+                long userHdrWords = Utilities.getWords((int)dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2]));
 
-            long totalWords = headerWords + arrayWords + userHdrWords;
+                long totalWords = headerWords + arrayWords + userHdrWords;
 //System.out.println("handleEventSearchForward: Found a record header!! skip forward " + totalWords + " words");
-            wordIndex += totalWords;
+                // If we're at the front of block header, hop past it
+                wordIndex += totalWords;
+            }
         }
         //---------------------------------------------------------------
 
@@ -2707,12 +2659,16 @@ System.out.println("handleEventSearchForward: skip forward " + totalWords + " wo
         this.add(panel, BorderLayout.CENTER);
 
         // highlight the file header
-        dataTableModel.highLightFileHeader(highlightFileHdr,
-                                           highlightFileHdrIndex,
-                                           highlightFileHdrUser,
-                                           mappedMemoryHandler.getFileHeader().getHeaderLength()/4,
-                                           mappedMemoryHandler.getFileHeader().getIndexLength()/4,
-                                           mappedMemoryHandler.getFileHeader().getUserHeaderLengthWords());
+        try {
+            dataTableModel.highLightFileHeader(highlightFileHdr,
+                                               highlightFileHdrIndex,
+                                               highlightFileHdrUser,
+                                               mappedMemoryHandler.getFileHeader().getHeaderLength()/4,
+                                               mappedMemoryHandler.getFileHeader().getIndexLength()/4,
+                                               mappedMemoryHandler.getFileHeader().getUserHeaderLengthWords());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
 

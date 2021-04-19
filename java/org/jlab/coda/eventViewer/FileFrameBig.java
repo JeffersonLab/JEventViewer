@@ -574,11 +574,12 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
                             // If we're looking for a block header ...
                             if (getBlock) {
-                                blockData = dataTableModel.highLightBlockHeader(highlightBlkHdr,
-                                                                                row, col, false);
+                                // First read the record header data
+                                blockData = dataTableModel.getBlockHeader(row, col);
                                 if (blockData == null) {
-                                    // Error of some kind
+                                    // Error of some kind or found file header
                                     foundValue = false;
+//System.out.println("continue, error in highlightBlockHeader");
                                     continue;
                                 }
 
@@ -588,9 +589,12 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                                 // between 4 & 6 inclusive.
                                 if ( ((blockData[5] & 0xf) < 2) || ((blockData[5] & 0xf) > 6) ) {
                                     // This is most likely NOT a header, so continue search
+//System.out.println("continue, error in block data, version = " + (blockData[5] & 0xf));
                                     foundValue = false;
                                     continue;
                                 }
+
+                                dataTableModel.highLightBlockHeader(highlightBlkHdr, row, col, false);
                             }
                             else {
                                 dataTableModel.highLightCell(highlightValue, row, col, false);
@@ -693,11 +697,12 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
                             // If we're looking for a block header ...
                             if (getBlock) {
-                                blockData = dataTableModel.highLightBlockHeader(highlightBlkHdr,
-                                                                                row, col, false);
+                                // First read the record header data
+                                blockData = dataTableModel.getBlockHeader(row, col);
                                 if (blockData == null) {
-                                    // Error of some kind
+                                    // Error of some kind or found file header
                                     foundValue = false;
+//System.out.println("continue, error in highlightBlockHeader");
                                     continue;
                                 }
 
@@ -707,9 +712,12 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
                                 // between 4 & 6 inclusive.
                                 if ( ((blockData[5] & 0xf) < 2) || ((blockData[5] & 0xf) > 6) ) {
                                     // This is most likely NOT a header, so continue search
+//System.out.println("continue, error in block data, version = " + (blockData[5] & 0xf));
                                     foundValue = false;
                                     continue;
                                 }
+
+                                dataTableModel.highLightBlockHeader(highlightBlkHdr, row, col, false);
                             }
                             else {
                                 dataTableModel.highLightCell(highlightValue, row, col, false);
@@ -1003,56 +1011,44 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
         int[] mapRowCol;
         EvioHeader node;
-        long val, wordIndex;
+        long val;
 
         // Where are we now?
         int row = dataTable.getSelectedRow();
         int col = dataTable.getSelectedColumn();
 
-        // If in first(index)/last(comment) column ...
-        if (!dataTableModel.isDataColumn(col)) {
+        // If there is no selection ...
+        if (row < 0 || col < 0) {
+            // Start at first data index
+            row = 0;
+            col = 1;
+        }
 
-            // If starting past the first row & col, error.
-            // Must start at an event.
-            if (row > 0 || col >= dataTableModel.getColumnCount() - 1) {
-                JOptionPane.showMessageDialog(this, "Start at 0 or beginning of known event", "Return",
-                                              JOptionPane.INFORMATION_MESSAGE);
+        // See if we're at the beginning of the file
+
+        // Transform row & col into absolute index
+        long wordIndex = dataTableModel.getClosestWordIndexOf(row, col);
+        mapRowCol = dataTableModel.getMapRowCol(wordIndex);
+        if (mapRowCol == null) return null;
+
+        // If at beginning of file ...
+        if ((mapRowCol[0] == 0) && (wordIndex < 8)) {
+            // Hop over first block header to next int which should be start of an event
+            wordIndex = 8;
+            // Put new cell in view & select
+            scrollToIndex(wordIndex, highlightEvntHdr, true);
+            node = new EvioHeader((int) (dataTableModel.getLongValueAt(wordIndex)),
+                    (int) (dataTableModel.getLongValueAt(wordIndex + 1)),
+                    wordIndex);
+            return node;
+        }
+        else {
+            // If in first(index)/last(comment) column ...
+            if (!dataTableModel.isDataColumn(col)) {
+                JOptionPane.showMessageDialog(this, "Start in file header or beginning of known event", "Return",
+                        JOptionPane.INFORMATION_MESSAGE);
 
                 return null;
-            }
-            // If no selection made yet (before all rows)
-            else {
-                row = 0;
-                col = 1;
-
-                // Transform row & col into absolute index
-                wordIndex = dataTableModel.getWordIndexOf(row, col);
-
-                //----------------------------------------------------------------------
-                // Are we right at the beginning of a block header? If so, move past it.
-                //----------------------------------------------------------------------
-                mapRowCol = dataTableModel.getMapRowCol(wordIndex + 7);
-
-                // First make sure we getting our data from the
-                // correct (perhaps next) memory mapped buffer.
-                dataTableModel.setMapIndex(mapRowCol[0]);
-
-                // Look forward 7 words to possible magic #
-                val = dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2]);
-
-                // If it is indeed a magic number, there is a block header at very beginning
-                if (val == 0xc0da0100L) {
-                    searchDone = true;
-                    // Hop over block header to next int which should be start of an event
-                    wordIndex += 8;
-                    // Put new cell in view & select
-                    scrollToIndex(wordIndex, highlightEvntHdr, true);
-                    node = new EvioHeader((int) (dataTableModel.getLongValueAt(wordIndex)),
-                                          (int) (dataTableModel.getLongValueAt(wordIndex + 1)),
-                                          wordIndex);
-                    return node;
-                }
-                //---------------------------------------------------------------
             }
         }
 
@@ -1062,9 +1058,6 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
         // Highlight selected event header len & next word
         dataTableModel.highLightEventHeader(highlightEvntHdr, row, col, false);
-
-        // Transform row & col into absolute index
-        wordIndex = dataTableModel.getWordIndexOf(row,col);
 
         node = new EvioHeader((int) (dataTableModel.getLongValueAt(wordIndex)),
                               (int) (dataTableModel.getLongValueAt(wordIndex + 1)),
@@ -1120,7 +1113,13 @@ public class FileFrameBig extends JFrame implements PropertyChangeListener {
 
         // If we're at the front of block header, hop past it
         if (val == 0xc0da0100L) {
-            wordIndex += 8;
+            // Possible that this is a block header, but check to see if header words = 8
+            mapRowCol = dataTableModel.getMapRowCol(wordIndex + 2);
+            long headerWords = dataTableModel.getLongValueAt(mapRowCol[1], mapRowCol[2]);
+
+            if (headerWords == 8) {
+                wordIndex += 8;
+            }
         }
         //---------------------------------------------------------------
 

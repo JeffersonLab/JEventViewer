@@ -446,6 +446,35 @@ final class MyTableModel extends AbstractTableModel {
 
 
     /**
+     * Given the row & col for a magic # word of an evio version 4 block header,
+     * return an array of ints containing the main 8-word header. This is used to examine
+     * the data to see if it truly is a header before committing to highlight it and
+     * treat it as such.
+     *
+     * @param row     row
+     * @param col     column
+     * @return int array containing all the block header values; null if error.
+     */
+    public int[] getBlockHeader(int row, int col) {
+        // Index of the magic # found in search =
+        // index of last word of block header
+        long lastIndex = getWordIndexOf(row,col);
+
+        // Theoretically the usually 8 word header can be larger, however, this is highly unlikely.
+        int headerSize = (int) getLongValueAt(lastIndex - 5);
+        if (headerSize != 8) {
+            return null;
+        }
+        int[] blockData = new int[headerSize];
+
+        for (int i = 0; i < headerSize; i++) {
+            blockData[headerSize - i - 1] = (int) getLongValueAt(lastIndex - i);
+        }
+        return blockData;
+    }
+
+
+    /**
      * Highlight a block header. The given row & col are for
      * the magic # word of the header. Refresh view.
      * This is used only for evio version < 6.
@@ -476,6 +505,44 @@ final class MyTableModel extends AbstractTableModel {
             dataTableRenderer.setHighlightCell(color, mrc[1], mrc[2], isError);
             fireTableCellUpdated(mrc[1], mrc[2]);
         }
+        return blockData;
+    }
+
+
+    /**
+     * Given the row & col for a magic # word of an evio version 6 record header,
+     * return an array of ints containing the main 14-word header. This is used to examine
+     * the data to see if it truly is a header before committing to highlight it and
+     * treat it as such.
+     *
+     * @param row  row
+     * @param col  column
+     * @return int array containing all the record header values; null if error
+     */
+    public int[] getRecordHeader(int row, int col) {
+
+        // Index of the magic # found in search
+        long magicNumIndex = getWordIndexOf(row,col);
+
+        // If at beginning of file, skip over the file header
+        // and the beginning of the first record header
+        if (mapIndex == 0 && magicNumIndex < (mappedMemoryHandler.getTotalFileHeaderBytes() + 28)/4) {
+            return null;
+        }
+
+        // Theoretically the usually 14 word header can be larger, however, this is highly unlikely.
+        int headerSize = (int) getLongValueAt(magicNumIndex - 5);
+        if (headerSize != 14) {
+            return null;
+        }
+        // Index of last word of record header
+        long lastIndex = magicNumIndex + 6 + (headerSize - 14);
+        int[] blockData = new int[headerSize];
+
+        for (int i = 0; i < headerSize; i++) {
+            blockData[headerSize - i - 1] = (int) getLongValueAt(lastIndex - i);
+        }
+
         return blockData;
     }
 
@@ -799,15 +866,18 @@ final class MyTableModel extends AbstractTableModel {
     /**
      * Get the closest file word index of the entry at the given row and column.
      * This accounts for the first and last columns which don't contain any data.
-     * Those columns will be treated as the last data-containing column.
-     * Row set accordingly.
+     * Those columns will be treated as the last (previous) data-containing column.
+     * Row set accordingly. Exception is for row = 0, col = 0 which will be treated
+     * as row = 0, col = 1.
      *
      * @param row   row
      * @param col   column
-     * @return file word index or 0 if column = 0 and row = 0.
+     * @return nearest file word index.
      */
     public long getClosestWordIndexOf(int row, int col) {
-        if (row == 0  &&  col == 0) return 0;
+        if (row == 0  &&  col == 0) {
+            col = 1;
+        }
 
         // 1st column is treated as last row's column 5
         if (col == 0) {
