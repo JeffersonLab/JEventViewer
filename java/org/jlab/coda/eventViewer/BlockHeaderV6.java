@@ -115,7 +115,10 @@ public final class BlockHeaderV6 implements Cloneable {
         userHeaderBytes        = recordInts[6];
         uncompressedDataBytes  = recordInts[8];
         compressionType        = recordInts[9] >>> 28;
-        compressionTypeStr     = CompressionType.getCompressionType(compressionType).getDescription();
+        CompressionType cType  = CompressionType.getCompressionType(compressionType);
+        if (cType != null) {
+            compressionTypeStr = cType.getDescription();
+        }
         compressedDataWords    = recordInts[9] & 0xffffff;
 
         if (order == ByteOrder.BIG_ENDIAN) {
