@@ -1,6 +1,7 @@
 package org.jlab.coda.eventViewer;
 
 
+import org.jlab.coda.hipo.CompressionType;
 import org.jlab.coda.hipo.RecordHeader;
 import org.jlab.coda.jevio.*;
 
@@ -571,6 +572,13 @@ if (debug) System.out.println("Error 4: " + node.error);
             blockNode.indexArrayBytes = indexBytes;
             blockNode.userHeaderBytes = userHeaderBytes;
             blockNode.compressionType = compressionType;
+            CompressionType cType = CompressionType.getCompressionType(compressionType);
+            if (cType != null) {
+                blockNode.compressionTypeStr = cType.getDescription();
+            }
+            else {
+                blockNode.compressionTypeStr = "None";
+            }
             blockNode.compressedDataWords = compressedDataWords;
             blockNode.uncompressedDataBytes = uncompressedDataBytes;
             blockNode.totalBytes = totalHeaderBytes; // Acct for padding
