@@ -6,6 +6,3 @@
 
 # ignore generated files/dirs
 build/
-doc/users_guide/
-doc/javadoc/
-doxyerrors.log
