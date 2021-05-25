@@ -30,7 +30,7 @@ public enum DictionarySource {
      * Set both the string and object forms of a dictionary to be associated
      * with a particular dictionary source.
      *
-=     * @param dictionary dictionary object
+     * @param dictionary dictionary object
      */
     public void setDictionary (EvioXMLDictionary dictionary) {
         this.dictionary = dictionary;

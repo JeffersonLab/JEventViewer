@@ -175,6 +175,8 @@ public class FileFrameV6 extends JFrame implements PropertyChangeListener {
 
     /**
 	 * Constructor for a simple viewer for a file's bytes.
+     * @param file file to view.
+     * @param version evio version of file data.
 	 */
 	public FileFrameV6(File file, int version) {
 		super(file.getName() + " bytes");

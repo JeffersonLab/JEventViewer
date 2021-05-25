@@ -20,9 +20,9 @@ public enum CodaBankTag {
     TRIGGER_BUILT_NOTS_NORUN         (0xff20, "Built trigger bank"),
     /** Built trigger bank, with timestamps, run: no #/type, with specific */
     TRIGGER_BUILT_TS_NORUN           (0xff21, "Built trigger bank"),
-    /** Built trigger bank, no timestamps, run: with #, type & specific */
+    /** Built trigger bank, no timestamps, run: with #, type and specific */
     TRIGGER_BUILT_NOTS_RUN           (0xff22, "Built trigger bank"),
-    /** Built trigger bank, with timestamps, run: with #, type & specific */
+    /** Built trigger bank, with timestamps, run: with #, type and specific */
     TRIGGER_BUILT_TS_RUN             (0xff23, "Built trigger bank"),
     /** Built trigger bank, no timestamps, run: no #, type or specific */
     TRIGGER_BUILT_NOTS_NORUN_NOSPEC  (0xff24, "Built trigger bank"),

@@ -48,7 +48,9 @@ public class EvioScanner {
 
     /**
      * Constructor.
-     * @param dataModel     object with file memory maps.
+     * @param component     window that displays a file's bytes as hex, 32 bit integers.
+     * @param dataModel     data table model - object with file memory maps.
+     * @param dataRenderer  data table render.
      * @param errorTask     object doing file scan in background,
      *                      use to update its progress.
      * @throws EvioException if endianness is wrong, version is wrong,
@@ -531,7 +533,7 @@ if (debug) System.out.println("Error 4: " + node.error);
     /**
      * Scan the file for evio errors.
      *
-     * @returns {@code true if error occurred}, else {@code false}
+     * @return {@code true if error occurred}, else {@code false}
      * @throws EvioException if file cannot even be attempted to be parsed
      */
     public boolean scanFileForErrors() throws EvioException {

@@ -176,7 +176,8 @@ public class EventTreeMenu {
 
     /**
 	 * Constructor. Holds the menus for a frame or internal frame that wants to manage a tree panel.
-	 * @param eventTreePanel holds the tree and all associated the widgets.
+     * @param eventTreePanel panel that holds the tree and all associated the widgets.
+     * @param eventInfoPanel panel that displays evio event info - event source, dictionary source.
 	 */
 	public EventTreeMenu(final EventTreePanel eventTreePanel, EventInfoPanel eventInfoPanel) {
         this.eventTreePanel = eventTreePanel;
@@ -784,6 +785,7 @@ public class EventTreeMenu {
 
     /**
      * Create a panel to change events in viewer.
+     * @return panel created.
      */
     JPanel addEventControlPanel() {
 
@@ -2042,7 +2044,10 @@ e.printStackTrace();
     }
 
 
-    /** Select a file in order to view its bytes. */
+    /**
+     * Select a file in order to view its bytes.
+     * @return File object of opened file.
+     */
     public File viewFileBytes() {
 
         File selectedFile = null;

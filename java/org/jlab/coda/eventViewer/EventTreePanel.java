@@ -60,7 +60,7 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
     /** Widget allowing scrolling of dictionary widget. */
     private JScrollPane dictionaryPane;
 
-    /** Widget allowing side-by-side viewing of tree & data panes. */
+    /** Widget allowing side-by-side viewing of tree and data panes. */
     private JSplitPane splitPane;
 
     /** Text area showing dictionary xml. */
@@ -292,7 +292,10 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
     // Classes and methods to handle data table
     //-------------------------------------------
 
-    /** Set table's data. */
+    /**
+     * Set table's data.
+     * @param data data to place in table.
+     */
     void setTableData(String[] data) {
         MyTableModel model = (MyTableModel)dataTable.getModel();
         model.setTableData(data);
@@ -303,7 +306,10 @@ public class EventTreePanel extends JPanel implements TreeSelectionListener {
     // End of table stuff
     //--------------------------------------------------
 
-    /** Set text display's data. */
+    /**
+     * Set table's data.
+     * @param data data to place in table.
+     */
     void setTextData(String[] data) {
 
         dataText.setText("");

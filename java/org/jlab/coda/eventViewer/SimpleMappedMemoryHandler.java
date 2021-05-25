@@ -230,7 +230,7 @@ public class SimpleMappedMemoryHandler {
     /**
      * Get the number of 32 bit words comprising the
      * file and first record headers for evio version 6 files, or
-     * comprising the first block header for evio versions < 6.
+     * comprising the first block header for evio versions &lt; 6.
      * @return the position, in 32 bit words, of the first data word from the file start.
      */
     public int getFirstDataIndex() {return firstDataIndex;}

@@ -84,14 +84,22 @@ final class MyTableModel extends AbstractTableModel {
         this.comments = new HashMap<String,String>();
     }
 
-    /** Constructor used for viewing event in tree form in EventTreePanel. */
+    /**
+     * Constructor used for viewing event in tree form in EventTreePanel.
+     * @param version evio version.
+     */
     public MyTableModel(int version) {
         evioVersion = version;
         this.comments = new HashMap<String,String>();
     }
 
 
-    /** Constructor used for viewing memory mapped file in FileFrame. */
+    /**
+     * Constructor used for viewing memory mapped file in FileFrame.
+     * @param mappedMemoryHandler object to handle mapped memory.
+     * @param comments map of comments placed into 7th column of table.
+     * @param version evio version.
+     */
     public MyTableModel(SimpleMappedMemoryHandler mappedMemoryHandler,
                         HashMap<String,String> comments, int version) {
 
@@ -305,7 +313,7 @@ final class MyTableModel extends AbstractTableModel {
     }
 
     /**
-     * Highlight the given row & col entry, then refresh view.
+     * Highlight the given row and col entry, then refresh view.
      * @param color   color of highlight
      * @param row     row
      * @param col     column
@@ -318,7 +326,7 @@ final class MyTableModel extends AbstractTableModel {
 
 
     /**
-     * Highlight an event header. The given row & col are for
+     * Highlight an event header. The given row and col are for
      * the first word of the header. Refresh view.
      * @param color   color of highlight
      * @param row     row
@@ -446,7 +454,7 @@ final class MyTableModel extends AbstractTableModel {
 
 
     /**
-     * Given the row & col for a magic # word of an evio version 4 block header,
+     * Given the row and col for a magic # word of an evio version 4 block header,
      * return an array of ints containing the main 8-word header. This is used to examine
      * the data to see if it truly is a header before committing to highlight it and
      * treat it as such.
@@ -475,9 +483,9 @@ final class MyTableModel extends AbstractTableModel {
 
 
     /**
-     * Highlight a block header. The given row & col are for
+     * Highlight a block header. The given row and col are for
      * the magic # word of the header. Refresh view.
-     * This is used only for evio version < 6.
+     * This is used only for evio version &lt; 6.
      *
      * @param color   color of highlight
      * @param row     row
@@ -510,7 +518,7 @@ final class MyTableModel extends AbstractTableModel {
 
 
     /**
-     * Given the row & col for a magic # word of an evio version 6 record header,
+     * Given the row and col for a magic # word of an evio version 6 record header,
      * return an array of ints containing the main 14-word header. This is used to examine
      * the data to see if it truly is a header before committing to highlight it and
      * treat it as such.
@@ -548,11 +556,13 @@ final class MyTableModel extends AbstractTableModel {
 
 
     /**
-     * Highlight a block header. The given row & col are for
+     * Highlight a block header. The given row and col are for
      * the magic # word of the header. Refresh view.
      * This used only for evio version 6+ as account must be made for file header.
      *
      * @param color1   color of highlight
+     * @param color2   color of highlight
+     * @param color3   color of highlight
      * @param row     row
      * @param col     column
      * @param isError true if highlighting an error

@@ -50,7 +50,9 @@ public class EvioScannerV6 {
 
     /**
      * Constructor.
-     * @param dataModel     object with file memory maps.
+     * @param component     window that displays a file's bytes as hex, 32 bit integers.
+     * @param dataModel     data table model - object with file memory maps.
+     * @param dataRenderer  data table render.
      * @param errorTask     object doing file scan in background,
      *                      use to update its progress.
      * @throws EvioException if endianness is wrong, version is wrong,

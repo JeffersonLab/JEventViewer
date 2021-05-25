@@ -11,6 +11,7 @@ import java.util.HashMap;
  */
 final class MyRenderer extends DefaultTableCellRenderer {
 
+    /** Number of rows (-1) between alternate background color. */
     private final int   nthRow;
     private static final Color alternateRowColor = new Color(240, 240, 240);
     private static final Color highlightGreen = new Color(210,250,210);
@@ -34,11 +35,19 @@ final class MyRenderer extends DefaultTableCellRenderer {
     private final HashMap<Long,Color> highlightErrors = new HashMap<>(100);
 
 
-    /** Constructor. */
+    /**
+     * Constructor.
+     * @param nthRow Number of rows (-1) between alternate background color.
+     */
     public MyRenderer(int nthRow) {
         this(nthRow, null);
     }
 
+    /**
+     * Constructor.
+     * @param nthRow Number of rows (-1) between alternate background color.
+     * @param defaultHighlight default highlight color.
+     */
     public MyRenderer(int nthRow, Color defaultHighlight) {
         super();
         this.nthRow = nthRow;
