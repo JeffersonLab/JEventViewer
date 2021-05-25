@@ -133,7 +133,12 @@ public class SimpleMappedMemoryHandler {
                 fileHeaderData.order(actualOrder);
 
                 // Do absolute read from map into file header byte buffer
-                maps.get(0).get(0, fileHeaderData.array(), 0, 4 * 14);
+                // For Java 13+ do:
+                // maps.get(0).get(0, fileHeaderData.array(), 0, 4 * 14);
+                // else do:
+                ByteBuffer bb = maps.get(0);
+                bb.get(fileHeaderData.array(), 0, 4 * 14);
+                bb.position(0);
                 // Create FileHeader object
                 fileHeader = new FileHeader();
                 // Have the object parse the buffer and store it in fields.
@@ -145,13 +150,26 @@ public class SimpleMappedMemoryHandler {
                 if (fileHeaderBytes > 4*14) {
                     fileHeaderData = ByteBuffer.wrap(new byte[fileHeaderBytes]);
                     fileHeaderData.order(actualOrder);
-                    maps.get(0).get(0, fileHeaderData.array(), 0, fileHeaderBytes);
+                    // For Java 13+ do:
+                    // maps.get(0).get(0, fileHeaderData.array(), 0, fileHeaderBytes);
+                    // else do:
+                    bb = maps.get(0);
+                    bb.get(fileHeaderData.array(), 0, fileHeaderBytes);
+                    bb.position(0);
                 }
 
                 // Another useful quantity is the index of where the very first data starts,
                 // past the file header the first record header.
                 ByteBuffer firstRecordHdr = ByteBuffer.wrap(new byte[4 * 14]);
-                maps.get(0).get(fileHeaderBytes, firstRecordHdr.array(), 0, 4 * 14);
+
+                // For Java 13+ do:
+                // maps.get(0).get(fileHeaderBytes, firstRecordHdr.array(), 0, 4 * 14);
+                // else do:
+                bb = maps.get(0);
+                bb.position(fileHeaderBytes);
+                bb.get(fileHeaderData.array(), 0, 4 * 14);
+                bb.position(0);
+
                 // Create RecordHeader object
                 RecordHeader recHeader = new RecordHeader();
                 // Parse the buffer and store it in fields.
