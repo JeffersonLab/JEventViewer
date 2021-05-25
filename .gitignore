@@ -6,3 +6,4 @@
 
 # ignore generated files/dirs
 build/
+doc/javadoc
