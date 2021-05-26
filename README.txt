@@ -5,7 +5,7 @@
 This software package creates a graphical user interface for looking at
 EVIO format files event-by-event, although it can also look at any file
 as a list of 32 bit integer (words). This version is compatible with
-evio version 6 format. To run it simply execute:
+evio version 6 format. To run it, with Java 8 or later, simply execute:
 
     java org.jlab.coda.eventViewer.EventTreeFrame
 
@@ -15,6 +15,13 @@ in the java/jars directory, are in your CLASSPATH.
 The alternative to that is executing the provided script:
 
     scripts/jeviodump
+
+Note that the script is for CODA users and sets the classpath to:
+
+    $CODA/common/jar
+
+In other words, make sure that your environmental variable CODA is defined
+and all the jar files are in that directory.
 
 
 ----- Installation -----
