@@ -3,6 +3,7 @@ package org.jlab.coda.eventViewer;
 import org.jlab.coda.hipo.FileHeader;
 import org.jlab.coda.hipo.HipoException;
 import org.jlab.coda.hipo.RecordHeader;
+import org.jlab.coda.jevio.Utilities;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -77,7 +78,7 @@ public class SimpleMappedMemoryHandler {
      */
     public SimpleMappedMemoryHandler(File file, ByteOrder order)
             throws IOException {
-
+        boolean debug = false;
         this.order = order;
 
         // Map the file to get access to its data
@@ -94,7 +95,7 @@ public class SimpleMappedMemoryHandler {
         extraByteCount = (int)(fileSize % 4);
 
         long sz, offset = 0L;
-        ByteBuffer memoryMapBuf;
+        ByteBuffer memoryMapBuf = null;
 
         // Ensure that the map size is a multiple of 20 bytes (1 row)
         // so things don't get impossible to deal with
@@ -106,8 +107,8 @@ public class SimpleMappedMemoryHandler {
         while (remainingSize > 0) {
             // Break into chunks of maxMapSize bytes
             sz = Math.min(remainingSize, maxMapSize);
-//System.out.println("mmapHandler: remaining size = " + remainingSize +
-//                   ", map size = " + sz + ", mapCount = " + mapCount);
+if (debug) System.out.println("mmapHandler: remaining size = " + remainingSize +
+                              ", map size = " + sz + ", mapCount = " + mapCount);
 
             memoryMapBuf = fileChannel.map(FileChannel.MapMode.READ_ONLY, offset, sz);
             memoryMapBuf.order(order);
@@ -123,8 +124,11 @@ public class SimpleMappedMemoryHandler {
         // Read in evio version 6 file header
         try {
             // This call gets version and sets ByteBuffer arg's order to correct endianness
+if (debug) System.out.println("mmapHandler: find version of map 0");
             int version = org.jlab.coda.jevio.Utilities.getEvioVersion(maps.get(0));
+if (debug) System.out.println("mmapHandler: versi  = " + version);
             ByteOrder actualOrder = maps.get(0).order();
+if (debug) System.out.println("mmapHandler: order  = " + actualOrder);
 
             // For version 6+ get the file header data
             if (version > 5) {
@@ -137,6 +141,7 @@ public class SimpleMappedMemoryHandler {
                 // maps.get(0).get(0, fileHeaderData.array(), 0, 4 * 14);
                 // else do:
                 ByteBuffer bb = maps.get(0);
+  if (debug) System.out.println("mmapHandler: get first map, bb.pos = " + bb.position() + ", lim = " + bb.limit());
                 bb.get(fileHeaderData.array(), 0, 4 * 14);
                 bb.position(0);
                 // Create FileHeader object
@@ -144,10 +149,12 @@ public class SimpleMappedMemoryHandler {
                 // Have the object parse the buffer and store it in fields.
                 // This method also sets fileHeaderData's byte order to its proper value.
                 fileHeader.readHeader(fileHeaderData, 0);
+if (debug) System.out.println("mmapHandler: file hdr len = " + fileHeader.getLength());
 
                 // Find total size, which includes index and user header, then read rest of data if necessary
                 fileHeaderBytes = fileHeader.getLength();
                 if (fileHeaderBytes > 4*14) {
+if (debug) System.out.println("mmapHandler: handle bigger file header of bytes = " + fileHeaderBytes);
                     fileHeaderData = ByteBuffer.wrap(new byte[fileHeaderBytes]);
                     fileHeaderData.order(actualOrder);
                     // For Java 13+ do:
@@ -166,8 +173,9 @@ public class SimpleMappedMemoryHandler {
                 // maps.get(0).get(fileHeaderBytes, firstRecordHdr.array(), 0, 4 * 14);
                 // else do:
                 bb = maps.get(0);
+if (debug) System.out.println("mmapHandler: to look at first record hdr, go to " + fileHeaderBytes);
                 bb.position(fileHeaderBytes);
-                bb.get(fileHeaderData.array(), 0, 4 * 14);
+                bb.get(firstRecordHdr.array(), 0, 4 * 14);
                 bb.position(0);
 
                 // Create RecordHeader object
@@ -175,9 +183,9 @@ public class SimpleMappedMemoryHandler {
                 // Parse the buffer and store it in fields.
                 recHeader.readHeader(firstRecordHdr, 0);
                 firstDataIndex = (fileHeaderBytes + recHeader.getTotalHeaderLength())/4;
-//System.out.println("mmapHandler: fileHeaderBytes = " + fileHeaderBytes);
-//System.out.println("mmapHandler: recordHeaderTotalLen = " + recHeader.getTotalHeaderLength());
-//System.out.println("mmapHandler: firstDataIndex = " + firstDataIndex);
+if (debug) System.out.println("mmapHandler: fileHeaderBytes = " + fileHeaderBytes);
+if (debug) System.out.println("mmapHandler: recordHeaderTotalLen = " + recHeader.getTotalHeaderLength());
+if (debug) System.out.println("mmapHandler: firstDataIndex = " + firstDataIndex);
 
                 // Now take this one step further and find out if data in the first record is compressed.
                 try {
@@ -201,7 +209,7 @@ public class SimpleMappedMemoryHandler {
             fileHeader = null;
         }
 
-        //Utilities.printBufferBytes(memoryMapBuf, 0, 1000, "File bytes");
+if (debug) Utilities.printBytes(memoryMapBuf, 0, 1000, "File bytes");
     }
 
 
