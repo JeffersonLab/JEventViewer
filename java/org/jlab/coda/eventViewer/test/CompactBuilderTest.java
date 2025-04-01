@@ -215,7 +215,7 @@ System.out.println("SET buf size to " + bufSize);
         // Create CompositeData object
         CompositeData cData = null;
         try {
-            cData = new CompositeData(format, 0x11, myData, 0x22 ,0x33);
+            cData = new CompositeData(format, 0x11, myData, 0x22 ,0x33, order);
         }
         catch (EvioException e) {
             e.printStackTrace();
