@@ -1,6 +1,6 @@
 ----------------------------
 
-# **JEventViewer version 2.0 **
+# **JEventViewer version 2.0**
 
 ----------------------------
 
