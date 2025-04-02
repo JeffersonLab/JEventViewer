@@ -15,4 +15,4 @@ Here are links to the documentation contained in the github repository
 (although it may also be accessed at the home page).
 
 
-* [User's Guide PDF](https://jeffersonlab.github.io/et/doc/users_guide/JEventViewer_Users_Guide.pdf)
+t* [User's Guide PDF](https://jeffersonlab.github.io/JEventViewer/doc/users_guide/JEventViewer_Users_Guide.pdf)
