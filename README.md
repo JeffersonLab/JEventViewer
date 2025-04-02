@@ -83,7 +83,12 @@ The java command in the user’s path will be the one used to do the compilation
 
 You can read the user documentation in either a pdf or word doc.
 In the repository, it’s located in the doc/users_guide directory.
-There is javadoc that can be generated (ant javadoc or ant developdoc).
+There is javadoc that can be generated (ant javadoc or ant developdoc)
+but it's of little or no use to the user, more relevant to the developer.
+
+Documentation on GitHub:
+
+* [All Documentation](https://jeffersonlab.github.io/JEventViewer)
 
  
 ### **Prerequisites**
