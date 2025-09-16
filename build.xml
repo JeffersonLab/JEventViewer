@@ -16,7 +16,7 @@
     <property name="build.dir"     value="build" />
     <property name="build.classes" value="${build.dir}/classes" />
     <property name="build.lib"     value="${build.dir}/lib" />
-    <property name="local.jars"    value="java/jars" />
+    <property name="local.jars"    value="java/jars/java15" />
     <property name="doc.dir"       value="doc/javadoc" />
     <property name="scripts.dir"   value="scripts" />
     <property name="jarName"       value="JEventViewer-${jev.version}.jar" />
@@ -106,6 +106,7 @@
     <!-- ************************************************************* -->
 
 
+    <echo message="Local jar location: ${local.jars}" />
     <!-- if $CODA is set, use that for classpath -->
     <target name="CODA_cp" depends="installCheck" if="codaDefined">
         <path id="classpath">
