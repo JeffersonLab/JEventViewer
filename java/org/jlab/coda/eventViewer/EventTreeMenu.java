@@ -1983,7 +1983,6 @@ public class EventTreeMenu {
             try {
                 // Try creating a new reader, if it fails the old is retained
                 EvioReader reader = new EvioReader(selectedFile);
-                reader.addHeaderRecoveryCheck();
                 int evCount = reader.getEventCount();
                 evioVersion = reader.getEvioVersion();
                 dataCompressionType = reader.getFirstBlockHeader().getCompressionType();
