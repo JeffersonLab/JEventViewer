@@ -16,27 +16,46 @@
     <property name="build.dir"     value="build" />
     <property name="build.classes" value="${build.dir}/classes" />
     <property name="build.lib"     value="${build.dir}/lib" />
-    <property name="local.jars"    value="java/jars/java15" />
+    <property name="local.jars"    value="java/jars/java8" />
     <property name="doc.dir"       value="doc/javadoc" />
     <property name="scripts.dir"   value="scripts" />
     <property name="jarName"       value="JEventViewer-${jev.version}.jar" />
     <property name="allJarNames"   value="JEventViewer-*.jar" />
     <property name="jarPath"       value="${build.lib}/${jarName}" />
 
-
-    <!-- Set Classpath, ignore caller's classpath -->
+    <!-- Ignore any system/caller CLASSPATH -->
     <property name="build.sysclasspath" value="ignore" />
-    <!-- By default use local jars in classpath -->
-    <path id="classpath">
-        <fileset dir="${local.jars}" >
-            <include name="*.jar" />
-        </fileset>
-    </path>
 
+    <!-- ========= Classpath resolution (exclusive choice) ========= -->
 
+    <!-- Detect CODA -->
+    <condition property="codaDefined">
+        <isset property="env.CODA"/>
+    </condition>
 
-    <!-- Targets -->
-    
+    <!-- If CODA is set, use ONLY ${CODA}/common/jar -->
+    <target name="classpath.coda" if="codaDefined">
+        <path id="classpath">
+            <fileset dir="${env.CODA}/common/jar">
+                <include name="*.jar"/>
+            </fileset>
+        </path>
+        <echo message="[classpath] Using CODA common jars: ${env.CODA}/common/jar"/>
+    </target>
+
+    <!-- Otherwise use ONLY local java/jars/java15 -->
+    <target name="classpath.local" unless="codaDefined">
+        <path id="classpath">
+            <fileset dir="${local.jars}">
+                <include name="*.jar"/>
+            </fileset>
+        </path>
+        <echo message="[classpath] Using local jars: ${local.jars}"/>
+    </target>
+
+    <!-- Resolve classpath before anything that needs it -->
+    <target name="resolve.classpath" depends="classpath.coda,classpath.local"/>
+
     <!-- Help -->
     <target name="help">
         <echo message="Usage: ant [-Dprefix=dir] &lt;target1&gt; [target2 | target3 | ...]" />
@@ -62,17 +81,16 @@
         <echo message="       prepare    - create necessary directories" />
     </target>
 
-
     <!-- Environment -->
-    <target name="env">
-        <echo message="Ant environment:" />
-        <echo message="" />
-        <echo message="    src.dir       = ${src.dir}" />
-        <echo message="    build.dir     = ${build.dir}" />
-        <echo message="    build.lib     = ${build.lib}" />
-        <echo message="    build.classes = ${build.classes}" />
-        <echo message="    doc.dir       = ${doc.dir}" />
-        <echo message="    javac.debug   = ${javac.debug}" />
+    <target name="env" depends="resolve.classpath">
+        <echo message="Ant environment:"/>
+        <echo message=""/>
+        <echo message="    src.dir       = ${src.dir}"/>
+        <echo message="    build.dir     = ${build.dir}"/>
+        <echo message="    build.lib     = ${build.lib}"/>
+        <echo message="    build.classes = ${build.classes}"/>
+        <echo message="    doc.dir       = ${doc.dir}"/>
+        <echo message="    javac.debug   = ${javac.debug}"/>
         <echo message="    classpath     = ${env.CLASSPATH}" />
     </target>
 
@@ -84,44 +102,13 @@
         <condition property="prefixDefined">
             <isset property="prefix"/>
         </condition>
-
-        <!-- Test to see if CODA environmental variable defined -->
-        <condition property="codaDefined">
-            <isset property="env.CODA"/>
-        </condition>
-
-        <!-- Test to see if no installation directory defined   -->
         <condition property="noInstallDir">
             <and>
-                <not>
-                    <isset property="prefix"/>
-                </not>
-                <not>
-                    <isset property="env.CODA"/>
-                </not>
+                <not><isset property="prefix"/></not>
+                <not><isset property="env.CODA"/></not>
             </and>
         </condition>
-
     </target>
-    <!-- ************************************************************* -->
-
-
-    <echo message="Local jar location: ${local.jars}" />
-    <!-- if $CODA is set, use that for classpath -->
-    <target name="CODA_cp" depends="installCheck" if="codaDefined">
-        <path id="classpath">
-            <fileset dir="${env.CODA}/common/jar" >
-                <include name="*.jar" />
-            </fileset>
-            <fileset dir="${local.jars}" >
-                <include name="*.jar" />
-            </fileset>
-        </path>
-        <echo message="Compile with jars in $CODA/common/jar" />
-    </target>
-
-    <!-- ************************************************************* -->
-
 
     <!-- Prepare things by creating directories -->
     <target name="prepare" depends="installCheck">
@@ -158,37 +145,37 @@
     </target>
     
     <!-- Compile all source -->
-    <target name="compile" depends="CODA_cp,prepare" description="Compiles all source code.">
-        <javac destdir="${build.classes}" debug="${javac.debug}" optimize="yes" >
-            <classpath refid="classpath" />
-            <src path="${src.dir}" />
+    <target name="compile" depends="resolve.classpath,prepare" description="Compiles all source code.">
+        <javac destdir="${build.classes}" debug="${javac.debug}" optimize="yes"
+               includeantruntime="false">
+            <classpath refid="classpath"/>
+            <src path="${src.dir}"/>
         </javac>
     </target>
 
-
-
-    <!-- ************************************************************* -->
     <!-- Javadoc -->
-    <target name="javadoc" description="Create javadoc.">
-        <mkdir dir="${doc.dir}" />
+    <target name="javadoc" depends="resolve.classpath" description="Create javadoc.">
+        <mkdir dir="${doc.dir}"/>
         <javadoc packagenames="org.jlab.coda.eventViewer"
                  sourcepath="java"
                  access="public"
                  destdir="${doc.dir}"
-                 use="true" >
-             <classpath refid="classpath" />
-       </javadoc>
+                 use="true"
+                 includeantruntime="false">
+            <classpath refid="classpath"/>
+        </javadoc>
     </target>
     
     <!-- Javadoc for developer -->
-    <target name="developdoc" description="Create javadoc for developer.">
+    <target name="developdoc" depends="resolve.classpath" description="Create javadoc for developer.">
         <mkdir dir="${doc.dir}" />
         <javadoc packagenames="org.jlab.coda.eventViewer"
                  sourcepath="java"
                  access="package"
                  destdir="${doc.dir}"
-                 use="true" >
-             <classpath refid="classpath" />
+                 use="true"
+                 includeantruntime="false">
+            <classpath refid="classpath"/>
         </javadoc>
     </target>
 
@@ -227,7 +214,7 @@
         <echo>Install scripts into ${prefix}/bin</echo>
         <!-- Using "exec", bash and cp preserves file permissions, but "copy" does not -->
         <exec executable="bash">
-            <arg line="-c 'mkdir ${prefix}/bin; cp -pr ${scripts.dir}/* ${prefix}/bin'" />
+            <arg line="-c 'mkdir -p ${prefix}/bin; cp -pr ${scripts.dir}/* ${prefix}/bin'"/>
         </exec>
     </target>
 
@@ -236,7 +223,7 @@
         <echo>Install scripts into ${env.CODA}/common/bin</echo>
         <!-- Using "exec", bash and cp preserves file permissions, but "copy" does not -->
         <exec executable="bash">
-            <arg line="-c 'mkdir ${env.CODA}/common/bin; cp -pr ${scripts.dir}/* ${env.CODA}/common/bin'" />
+            <arg line="-c 'mkdir -p ${env.CODA}/common/bin; cp -pr ${scripts.dir}/* ${env.CODA}/common/bin'"/>
         </exec>
     </target>
 
