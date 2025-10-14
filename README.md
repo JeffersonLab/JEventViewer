@@ -40,50 +40,31 @@ There’s the jar file JEventViewer-2.0.jar in the java/jars/java8 directory,
 already pre-built with Java 8, so one does not need to build it.
 There's another one in java/jars/java15 directory built with Java 15.
 
-To build it simply do:
+To build a new jar file do:
 
-	ant jar
+	./gradlew
+The newly created jar file will be places in `build/lib/`. To change java version
 
-Other options can be seen by calling:
+In addition to standard gradle options, the following commands can be run:
 
-	ant help
+- `./gradlew env` prints variables and paths used for building and installation
+- `./gradlew javadoc` create javadoc documentation 
+- `./gradlew developdoc` create javadoc documentation for developers 
+- `./gradlew undoc` remove all javadoc documentation 
+- `./gradlew install -Pprefix=/your/install/path` create javadoc documentation for developers 
+- `./gradlew uninstall` remove jar file previously installed into `prefix`, if given on command line by `-Dprefix=dir`. Else uninstall from `$CODA` if defined.
 
-The output which is:
+To see a full list of options, run `./gradlew tasks`. To change java versions, edit the line 
 
-	help:
-		[echo] Usage: ant [ant options] <target1> [target2 | target3 | ...]
-			
-		[echo] targets:
-		[echo] help - print out usage
-		[echo] env - print out build file variables' values
-		[echo] compile - compile java files
-		[echo] clean - remove class files
-		[echo] cleanall - remove all generated files
-		[echo] jar - compile and create jar file
-		[echo]        install    - create jar file and install into 'prefix'
-		[echo]                     if given on command line by -Dprefix=dir',
-		[echo]                     else install into CODA if defined
-		[echo]        uninstall  - remove jar file previously installed into 'prefix'
-		[echo]                     if given on command line by -Dprefix=dir',
-		[echo]                     else installed into CODA if defined
-		[echo] all - clean, compile and create jar file
-		[echo] javadoc - create javadoc documentation
-		[echo] developdoc - create javadoc documentation for developer
-		[echo]        undoc      - remove all javadoc documentation
-		[echo] prepare - create necessary directories
-
-
-Although this is fairly self-explanatory, executing ant is the same as ant compile.
-That will compile all the java. All compiled code is placed in the generated **build** directory.
-If the user wants a jar file, execute ant jar to place the resulting file in the **build/lib** directory.
-The java command in the user’s path will be the one used to do the compilation.
+	toolchain { languageVersion.set(JavaLanguageVersion.of(8)) }
+ with desired java version in the file `build.gradle.kts`.
 
 
 ### **Documentation**
 
 You can read the user documentation in either a pdf or word doc.
-In the repository, it’s located in the doc/users_guide directory.
-There is javadoc that can be generated (ant javadoc or ant developdoc)
+In the repository, it’s located in the `doc/users_guide` directory.
+There is javadoc that can be generated (`./gradlew javadoc` or `./gradlew developdoc`)
 but it's of little or no use to the user, more relevant to the developer.
 
 Documentation on GitHub:
