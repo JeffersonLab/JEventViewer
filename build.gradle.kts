@@ -29,7 +29,7 @@ plugins {
 }
 
 group = "org.jlab.coda"
-version = "2.0" // jev.version
+version = "2.1" // jev.version
 
 java {
     toolchain { languageVersion.set(JavaLanguageVersion.of(8)) } // Modern gradle 9.1.x way of choosing JDK
