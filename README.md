@@ -1,6 +1,6 @@
 ----------------------------
 
-# **JEventViewer version 2.0**
+# **JEventViewer **
 
 ----------------------------
 
@@ -11,7 +11,7 @@ evio version 4 & 6 formats. To run it, with Java 8 or later, simply execute:
 
     java org.jlab.coda.eventViewer.EventTreeFrame
 
-Make sure that the jar file, JEventViewer-2.0.jar, and all the other jar files
+Make sure that the jar file, JEventViewer-2.x.jar, and all the other jar files
 in the java/jars directory, are in your CLASSPATH.
 
 The alternative to that is executing the provided script:
@@ -31,12 +31,9 @@ and all the jar files are in that directory.
 The code can be downloaded from its github site:
 
     git clone https://github.com/JeffersonLab/JEventViewer.git
+    git checkout
 
-The default branch is "2.0" but one can ensure that by calling:
-
-    git checkout 2.0
-
-There’s the jar file JEventViewer-2.0.jar in the java/jars/java8 directory,
+There’s the jar file JEventViewer-2.x.jar in the java/jars/java8 directory,
 already pre-built with Java 8, so one does not need to build it.
 There's another one in java/jars/java15 directory built with Java 15.
 
@@ -74,7 +71,7 @@ Documentation on GitHub:
  
 ### **Prerequisites**
 
-The other jar files necessary to compile JEventViewer-2.0.jar are in the java/jars directory.
+The other jar files necessary to compile JEventViewer-2.x.jar are in the java/jars directory.
 They are compiled with Java 8. In addition, there are 2 subdirectories:
 
     1) java/jars/java8, which contains all such jars compiled with Java 8, and
